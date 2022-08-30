@@ -2,6 +2,7 @@ require("@nomicfoundation/hardhat-toolbox");
 require('@openzeppelin/hardhat-upgrades');
 require('hardhat-dependency-compiler');
 require("hardhat-contract-sizer");
+require('solidity-coverage');
 
 /** @type import('hardhat/config').HardhatUserConfig */
 module.exports = {
@@ -13,7 +14,7 @@ module.exports = {
         runs: 200
       }
     }
-  },  
+  },
   contractSizer: {
     alphaSort: true,
     runOnCompile: false,
