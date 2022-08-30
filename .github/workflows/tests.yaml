@@ -19,7 +19,9 @@ jobs:
       - run: npx hardhat size-contracts
       - run: npm run solhint
       - run: npx hardhat test
-          REPORT_GAS: "1"
+        env:
           ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
+          REPORT_GAS: "1"
       - run: npx hardhat coverage
+        env:
           ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}
