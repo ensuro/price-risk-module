@@ -25,7 +25,6 @@ module.exports = {
       "@ensuro/core/contracts/PolicyPool.sol",
       "@ensuro/core/contracts/AccessManager.sol",
       "@ensuro/core/contracts/PremiumsAccount.sol",
-      "@ensuro/core/contracts/PolicyNFT.sol",
       "@ensuro/core/contracts/EToken.sol",
       "@ensuro/core/contracts/mocks/TestCurrency.sol",
     ],

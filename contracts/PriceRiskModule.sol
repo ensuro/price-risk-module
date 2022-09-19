@@ -212,19 +212,20 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
 
     uint256 policyId = (uint256(uint160(address(this))) << 96) + _internalId;
     PolicyData storage priceRiskPolicy = _policies[policyId];
-    address customer = _msgSender();
+    address onBehalfOf = _msgSender();
     priceRiskPolicy.ensuroPolicy = _newPolicy(
       payout,
       premium,
       lossProb,
       expiration,
-      customer,
+      onBehalfOf,
+      onBehalfOf,
       _internalId
     );
     _internalId += 1;
     priceRiskPolicy.triggerPrice = triggerPrice;
     priceRiskPolicy.lower = lower;
-    emit NewPricePolicy(customer, policyId, triggerPrice, lower);
+    emit NewPricePolicy(onBehalfOf, policyId, triggerPrice, lower);
     return policyId;
   }
 
