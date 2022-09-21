@@ -72,7 +72,7 @@ describe("Test PriceRiskModule contract", function () {
     });
 
     const start = (await owner.provider.getBlock("latest")).timestamp;
-    await expect(rm.pricePolicy(_A(100), true, _A(1000), start + 3600)).to.be.revertedWith("wadDiv: Division by zero");
+    await expect(rm.pricePolicy(_A(100), true, _A(1000), start + 3600)).to.be.reverted;
 
     await priceOracle.setAssetPrice(currency.address, _E("0.000333333")); // 1 ETH = 3000 USDC
 

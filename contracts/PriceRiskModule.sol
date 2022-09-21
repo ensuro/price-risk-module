@@ -7,7 +7,7 @@ import {IPolicyPool} from "@ensuro/core/contracts/interfaces/IPolicyPool.sol";
 import {IPremiumsAccount} from "@ensuro/core/contracts/interfaces/IPremiumsAccount.sol";
 import {RiskModule} from "@ensuro/core/contracts/RiskModule.sol";
 import {Policy} from "@ensuro/core/contracts/Policy.sol";
-import {WadRayMath} from "@ensuro/core/contracts/WadRayMath.sol";
+import {WadRayMath} from "./dependencies/WadRayMath.sol";
 import {IPriceRiskModule} from "./interfaces/IPriceRiskModule.sol";
 import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
 import "hardhat/console.sol";
@@ -183,13 +183,9 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     uint256 decimalConv = 10**(18 - _referenceCurrency.decimals());
     // Calculate the jump percentage as integer with simetric rounding
     if (currentPrice > triggerPrice) {
-      priceJump =
-        WadRayMath.wad() -
-        (triggerPrice * decimalConv).wadDiv(currentPrice * decimalConv);
+      priceJump = WadRayMath.WAD - (triggerPrice * decimalConv).wadDiv(currentPrice * decimalConv);
     } else {
-      priceJump =
-        (triggerPrice * decimalConv).wadDiv(currentPrice * decimalConv) -
-        WadRayMath.wad();
+      priceJump = (triggerPrice * decimalConv).wadDiv(currentPrice * decimalConv) - WadRayMath.WAD;
     }
 
     uint8 downPerc = uint8((priceJump + _slotSize / 2) / _slotSize);
