@@ -13,50 +13,55 @@ const {
 } = require("@ensuro/core/js/test-utils");
 
 describe("Test PriceRiskModule contract", function () {
-  let currency;
-  let wmatic;
-  let pool;
-  let premiumsAccount;
-  let priceOracle;
-  let PriceRiskModule;
   let owner, lp, cust;
   let _A;
-  let etk;
-  let accessManager;
 
   beforeEach(async () => {
     [owner, lp, cust] = await ethers.getSigners();
 
     _A = amountFunction(6);
+  });
 
-    currency = await initCurrency(
+  async function deployPoolFixture() {
+    const currency = await initCurrency(
       { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) },
       [lp, cust],
       [_A(5000), _A(500)]
     );
 
-    wmatic = await initCurrency({ name: "Test WETH", symbol: "WETH", decimals: 18, initial_supply: _E("1000") });
+    const wmatic = await initCurrency({ name: "Test WETH", symbol: "WETH", decimals: 18, initial_supply: _E("1000") });
 
-    pool = await deployPool(hre, {
+    const pool = await deployPool(hre, {
       currency: currency.address,
       grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
       treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1", // Random address
     });
     pool._A = _A;
 
-    etk = await addEToken(pool, {});
+    const etk = await addEToken(pool, {});
 
-    premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address });
+    const premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address });
 
     const PriceOracle = await ethers.getContractFactory("PriceOracle");
-    priceOracle = await PriceOracle.deploy();
-    accessManager = await ethers.getContractAt("AccessManager", await pool.access());
+    const priceOracle = await PriceOracle.deploy();
+    const accessManager = await ethers.getContractAt("AccessManager", await pool.access());
 
-    PriceRiskModule = await ethers.getContractFactory("PriceRiskModule");
+    const PriceRiskModule = await ethers.getContractFactory("PriceRiskModule");
 
     await currency.connect(lp).approve(pool.address, _A(5000));
     await pool.connect(lp).deposit(etk.address, _A(5000));
-  });
+    return {
+      PriceRiskModule,
+      pool,
+      currency,
+      accessManager,
+      etk,
+      priceOracle,
+      premiumsAccount,
+      wmatic,
+      accessManager,
+    };
+  }
 
   function _makeArray(n, initialValue) {
     const ret = new Array(n);
@@ -67,6 +72,8 @@ describe("Test PriceRiskModule contract", function () {
   }
 
   it("Should reject if prices not defined", async function () {
+    const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
+      await deployPoolFixture();
     const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
       extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
     });
@@ -93,7 +100,6 @@ describe("Test PriceRiskModule contract", function () {
     expect(price0).to.equal(0);
     expect(lossProb0).to.equal(0);
 
-    console.log("RM Address", rm.address);
     grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
 
     const priceSlots = await rm.PRICE_SLOTS();
@@ -115,6 +121,8 @@ describe("Test PriceRiskModule contract", function () {
   });
 
   it("Should trigger the policy only if threshold met", async function () {
+    const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
+      await deployPoolFixture();
     const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
       extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
       scrPercentage: "0.5",
@@ -165,6 +173,8 @@ describe("Test PriceRiskModule contract", function () {
   });
 
   it("Should trigger the policy only if threshold met - Upper variant", async function () {
+    const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
+      await deployPoolFixture();
     const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
       extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
       scrPercentage: "0.5",
