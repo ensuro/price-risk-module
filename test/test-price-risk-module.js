@@ -73,7 +73,26 @@ describe("Test PriceRiskModule contract", function () {
     return ret;
   }
 
-  it("Should reject if prices not defined", async function () {
+  it("Should never allow reinitialization", async () => {
+    const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic } = await deployPoolFixture();
+    const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
+      extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
+    });
+
+    await expect(
+      rm.initialize(
+        "Reinitialized rm",
+        _W("1"),
+        _W("1"),
+        _W("0"),
+        _A("1000"),
+        _A("10000"),
+        "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1"
+      )
+    ).to.be.revertedWith("Initializable: contract is already initialized");
+  });
+
+  it("Should reject if prices not defined", async () => {
     const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
       await deployPoolFixture();
     const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
@@ -122,7 +141,7 @@ describe("Test PriceRiskModule contract", function () {
     expect(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600)).to.be.equal(premium);
   });
 
-  it("Should trigger the policy only if threshold met", async function () {
+  it("Should trigger the policy only if threshold met", async () => {
     const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
       await deployPoolFixture();
     const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
@@ -174,7 +193,7 @@ describe("Test PriceRiskModule contract", function () {
     await expect(() => rm.triggerPolicy(policyId)).to.changeTokenBalance(currency, cust, _A(1000));
   });
 
-  it("Should trigger the policy only if threshold met - Upper variant", async function () {
+  it("Should trigger the policy only if threshold met - Upper variant", async () => {
     const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
       await deployPoolFixture();
     const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
