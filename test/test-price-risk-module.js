@@ -1,4 +1,5 @@
 const { expect } = require("chai");
+const hre = require("hardhat");
 const {
   initCurrency,
   deployPool,
@@ -12,12 +13,14 @@ const {
   getTransactionEvent,
 } = require("@ensuro/core/js/test-utils");
 
+hre.upgrades.silenceWarnings();
+
 describe("Test PriceRiskModule contract", function () {
   let owner, lp, cust;
   let _A;
 
   beforeEach(async () => {
-    [owner, lp, cust] = await ethers.getSigners();
+    [owner, lp, cust] = await hre.ethers.getSigners();
 
     _A = amountFunction(6);
   });
@@ -42,11 +45,11 @@ describe("Test PriceRiskModule contract", function () {
 
     const premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address });
 
-    const PriceOracle = await ethers.getContractFactory("PriceOracle");
+    const PriceOracle = await hre.ethers.getContractFactory("PriceOracle");
     const priceOracle = await PriceOracle.deploy();
-    const accessManager = await ethers.getContractAt("AccessManager", await pool.access());
+    const accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
 
-    const PriceRiskModule = await ethers.getContractFactory("PriceRiskModule");
+    const PriceRiskModule = await hre.ethers.getContractFactory("PriceRiskModule");
 
     await currency.connect(lp).approve(pool.address, _A(5000));
     await pool.connect(lp).deposit(etk.address, _A(5000));
@@ -59,7 +62,6 @@ describe("Test PriceRiskModule contract", function () {
       priceOracle,
       premiumsAccount,
       wmatic,
-      accessManager,
     };
   }
 
