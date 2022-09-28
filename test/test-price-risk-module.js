@@ -1,5 +1,6 @@
 const { expect } = require("chai");
 const hre = require("hardhat");
+const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const {
   initCurrency,
   deployPool,
@@ -25,56 +26,11 @@ describe("Test PriceRiskModule contract", function () {
     _A = amountFunction(6);
   });
 
-  async function deployPoolFixture() {
-    const currency = await initCurrency(
-      { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) },
-      [lp, cust],
-      [_A(5000), _A(500)]
+  it("Should never allow reinitialization", async () => {
+    const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic } = await helpers.loadFixture(
+      deployPoolFixture
     );
 
-    const wmatic = await initCurrency({ name: "Test WETH", symbol: "WETH", decimals: 18, initial_supply: _E("1000") });
-
-    const pool = await deployPool(hre, {
-      currency: currency.address,
-      grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
-      treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1", // Random address
-    });
-    pool._A = _A;
-
-    const etk = await addEToken(pool, {});
-
-    const premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address });
-
-    const PriceOracle = await hre.ethers.getContractFactory("PriceOracle");
-    const priceOracle = await PriceOracle.deploy();
-    const accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
-
-    const PriceRiskModule = await hre.ethers.getContractFactory("PriceRiskModule");
-
-    await currency.connect(lp).approve(pool.address, _A(5000));
-    await pool.connect(lp).deposit(etk.address, _A(5000));
-    return {
-      PriceRiskModule,
-      pool,
-      currency,
-      accessManager,
-      etk,
-      priceOracle,
-      premiumsAccount,
-      wmatic,
-    };
-  }
-
-  function _makeArray(n, initialValue) {
-    const ret = new Array(n);
-    for (i = 0; i < n; i++) {
-      ret[i] = initialValue;
-    }
-    return ret;
-  }
-
-  it("Should never allow reinitialization", async () => {
-    const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic } = await deployPoolFixture();
     const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
       extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
     });
@@ -94,7 +50,7 @@ describe("Test PriceRiskModule contract", function () {
 
   it("Should reject if prices not defined", async () => {
     const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
-      await deployPoolFixture();
+      await helpers.loadFixture(deployPoolFixture);
     const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
       extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
     });
@@ -143,7 +99,7 @@ describe("Test PriceRiskModule contract", function () {
 
   it("Should trigger the policy only if threshold met", async () => {
     const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
-      await deployPoolFixture();
+      await helpers.loadFixture(deployPoolFixture);
     const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
       extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
       scrPercentage: "0.5",
@@ -195,7 +151,7 @@ describe("Test PriceRiskModule contract", function () {
 
   it("Should trigger the policy only if threshold met - Upper variant", async () => {
     const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
-      await deployPoolFixture();
+      await helpers.loadFixture(deployPoolFixture);
     const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
       extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
       scrPercentage: "0.5",
@@ -241,4 +197,52 @@ describe("Test PriceRiskModule contract", function () {
     await priceOracle.setAssetPrice(wmatic.address, _E("0.0007"));
     await expect(() => rm.triggerPolicy(policyId)).to.changeTokenBalance(currency, cust, _A(1000));
   });
+
+  async function deployPoolFixture() {
+    const currency = await initCurrency(
+      { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) },
+      [lp, cust],
+      [_A(5000), _A(500)]
+    );
+
+    const wmatic = await initCurrency({ name: "Test WETH", symbol: "WETH", decimals: 18, initial_supply: _E("1000") });
+
+    const pool = await deployPool(hre, {
+      currency: currency.address,
+      grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
+      treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1", // Random address
+    });
+    pool._A = _A;
+
+    const etk = await addEToken(pool, {});
+
+    const premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address });
+
+    const PriceOracle = await hre.ethers.getContractFactory("PriceOracle");
+    const priceOracle = await PriceOracle.deploy();
+    const accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
+
+    const PriceRiskModule = await hre.ethers.getContractFactory("PriceRiskModule");
+
+    await currency.connect(lp).approve(pool.address, _A(5000));
+    await pool.connect(lp).deposit(etk.address, _A(5000));
+    return {
+      PriceRiskModule,
+      pool,
+      currency,
+      accessManager,
+      etk,
+      priceOracle,
+      premiumsAccount,
+      wmatic,
+    };
+  }
 });
+
+function _makeArray(n, initialValue) {
+  const ret = new Array(n);
+  for (let i = 0; i < n; i++) {
+    ret[i] = initialValue;
+  }
+  return ret;
+}
