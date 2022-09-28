@@ -135,7 +135,10 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
 
     uint8 decTo = assetTo.decimals();
 
-    uint256 exchangeRate = priceFrom.wadDiv(priceTo) / 10**(ORACLE_DECIMALS - decTo);
+    uint256 exchangeRate = priceFrom.wadDiv(priceTo);
+
+    if (ORACLE_DECIMALS >= decTo) exchangeRate /= 10**(ORACLE_DECIMALS - decTo);
+    else exchangeRate *= 10**(decTo - ORACLE_DECIMALS);
 
     return exchangeRate;
   }

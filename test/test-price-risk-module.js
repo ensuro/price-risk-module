@@ -13,6 +13,7 @@ const {
   addEToken,
   getTransactionEvent,
   accessControlMessage,
+  _R,
 } = require("@ensuro/core/js/test-utils");
 
 hre.upgrades.silenceWarnings();
@@ -126,7 +127,7 @@ describe("Test PriceRiskModule contract", function () {
     expect((await rm.getCDF(1))[newCdf.length - 1]).to.equal(_W("0.5"));
   });
 
-  it("Should convert between different assets", async () => {
+  it("Should calculate exchange rate between different assets (Wad vs Amount)", async () => {
     const { currency, wmatic, priceOracle, PriceRiskModule, pool, premiumsAccount } = await helpers.loadFixture(
       deployPoolFixture
     );
@@ -139,7 +140,37 @@ describe("Test PriceRiskModule contract", function () {
 
     expect(await rm._getExchangeRate(wmatic.address, currency.address)).to.equal(_A(0.4));
 
-    expect(await rm._getExchangeRate(currency.address, wmatic.address)).to.equal(_E("2.5"));
+    expect(await rm._getExchangeRate(currency.address, wmatic.address)).to.equal(_W("2.5"));
+  });
+
+  it("Should calculate exchange rate between different assets (Ray vs 9 decimals)", async () => {
+    const { priceOracle, PriceRiskModule, pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
+
+    const _A27 = _R;
+    const asset27d = await initCurrency({
+      name: "27 decimals",
+      symbol: "27D",
+      decimals: 27,
+      initial_supply: _A27("100"),
+    });
+
+    const _A9 = amountFunction(9);
+    const asset9d = await initCurrency({
+      name: "9 decimals",
+      symbol: "9D",
+      decimals: 9,
+      initial_supply: _A9("100"),
+    });
+
+    const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
+      extraConstructorArgs: [asset27d.address, asset9d.address, priceOracle.address, _W("0.01")],
+    });
+
+    await priceOracle.setAssetPrice(asset27d.address, _E("0.001"));
+    await priceOracle.setAssetPrice(asset9d.address, _E("0.08"));
+
+    expect(await rm._getExchangeRate(asset27d.address, asset9d.address)).to.equal(_A9(0.0125));
+    expect(await rm._getExchangeRate(asset9d.address, asset27d.address)).to.equal(_A27(80));
   });
 
   it("Should calculate policy premium", async () => {
