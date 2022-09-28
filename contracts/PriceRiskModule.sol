@@ -10,7 +10,6 @@ import {Policy} from "@ensuro/core/contracts/Policy.sol";
 import {WadRayMath} from "./dependencies/WadRayMath.sol";
 import {IPriceRiskModule} from "./interfaces/IPriceRiskModule.sol";
 import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
-import "hardhat/console.sol";
 
 /**
  * @title PriceRiskModule
@@ -21,6 +20,8 @@ import "hardhat/console.sol";
 contract PriceRiskModule is RiskModule, IPriceRiskModule {
   using SafeERC20 for IERC20Metadata;
   using WadRayMath for uint256;
+
+  uint8 internal constant ORACLE_DECIMALS = 18; // TODO: is this always the case?
 
   bytes32 public constant CUSTOMER_ROLE = keccak256("CUSTOMER_ROLE");
   bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
@@ -132,15 +133,10 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     uint256 priceTo = _oracle.getAssetPrice(address(assetTo));
     require(priceTo != 0, "Price to not available");
 
-    uint256 exchangeRate = priceFrom.wadDiv(priceTo);
-
-    uint8 decFrom = assetFrom.decimals();
     uint8 decTo = assetTo.decimals();
-    if (decFrom > decTo) {
-      exchangeRate /= 10**(decFrom - decTo);
-    } else {
-      exchangeRate *= 10**(decTo - decFrom);
-    }
+
+    uint256 exchangeRate = priceFrom.wadDiv(priceTo) / 10**(ORACLE_DECIMALS - decTo);
+
     return exchangeRate;
   }
 

@@ -55,24 +55,55 @@ describe("Test PriceRiskModule contract", function () {
       extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
     });
 
-    const start = (await owner.provider.getBlock("latest")).timestamp;
-    await expect(rm.pricePolicy(_A(100), true, _A(1000), start + 3600)).to.be.revertedWith("Price from not available");
+    await expect(rm.pricePolicy(_A(100), true, _A(1000), 3600)).to.be.revertedWith("Price from not available");
+
+    await priceOracle.setAssetPrice(wmatic.address, _E("0.5"));
+    await expect(rm.pricePolicy(_A(100), true, _A(1000), 3600)).to.be.revertedWith("Price to not available");
+  });
+
+  it("Should reject if trigger price has already been reached", async () => {
+    const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
+      await helpers.loadFixture(deployPoolFixture);
+    const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
+      extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
+    });
 
     await priceOracle.setAssetPrice(wmatic.address, _E("0.0005")); // 1 ETH = 2000 WMATIC
+    await priceOracle.setAssetPrice(currency.address, _E("0.000333333")); // 1 ETH = 3000 USDC
+    // Therefore 1 WMATIC = 1.5 USDC
+    await expect(rm.pricePolicy(_A(2), true, _A(1000), 3600)).to.be.revertedWith("Price already at trigger value");
 
-    await expect(rm.pricePolicy(_A(100), true, _A(1000), start + 3600)).to.be.revertedWith("Price to not available");
+    await expect(rm.pricePolicy(_A(1), false, _A(1000), 3600)).to.be.revertedWith("Price already at trigger value");
+  });
 
+  it("Should convert between different assets", async () => {
+    const { currency, wmatic, priceOracle, PriceRiskModule, pool, premiumsAccount } = await helpers.loadFixture(
+      deployPoolFixture
+    );
+    const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
+      extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
+    });
+
+    await priceOracle.setAssetPrice(wmatic.address, _E("0.2"));
+    await priceOracle.setAssetPrice(currency.address, _E("0.5"));
+
+    expect(await rm._getExchangeRate(wmatic.address, currency.address)).to.equal(_A(0.4));
+
+    expect(await rm._getExchangeRate(currency.address, wmatic.address)).to.equal(_E("2.5"));
+  });
+
+  it("Should calculate policy premium", async () => {
+    const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
+      await helpers.loadFixture(deployPoolFixture);
+    const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
+      extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
+    });
+    const start = (await owner.provider.getBlock("latest")).timestamp;
+
+    await priceOracle.setAssetPrice(wmatic.address, _E("0.0005")); // 1 ETH = 2000 WMATIC
     await priceOracle.setAssetPrice(currency.address, _E("0.000333333")); // 1 ETH = 3000 USDC
 
-    // 1 WMATIC = 1.5 USDC
-
-    await expect(rm.pricePolicy(_A(2), true, _A(1000), start + 3600)).to.be.revertedWith(
-      "Price already at trigger value"
-    );
-
-    await expect(rm.pricePolicy(_A(1), false, _A(1000), start + 3600)).to.be.revertedWith(
-      "Price already at trigger value"
-    );
+    // => 1 WMATIC = 1.5 USDC
 
     let [price0, lossProb0] = await rm.pricePolicy(_A(1.1), true, _A(1000), start + 3600);
     expect(price0).to.equal(0);
