@@ -12,6 +12,7 @@ const {
   grantComponentRole,
   addEToken,
   getTransactionEvent,
+  accessControlMessage,
 } = require("@ensuro/core/js/test-utils");
 
 hre.upgrades.silenceWarnings();
@@ -24,6 +25,30 @@ describe("Test PriceRiskModule contract", function () {
     [owner, lp, cust] = await hre.ethers.getSigners();
 
     _A = amountFunction(6);
+  });
+
+  it("Should return the insured asset", async () => {
+    const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic } = await helpers.loadFixture(
+      deployPoolFixture
+    );
+
+    const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
+      extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
+    });
+
+    expect(await rm.asset()).to.equal(wmatic.address);
+  });
+
+  it("Should return the reference currency", async () => {
+    const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic } = await helpers.loadFixture(
+      deployPoolFixture
+    );
+
+    const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
+      extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
+    });
+
+    expect(await rm.referenceCurrency()).to.equal(currency.address);
   });
 
   it("Should never allow reinitialization", async () => {
@@ -76,6 +101,31 @@ describe("Test PriceRiskModule contract", function () {
     await expect(rm.pricePolicy(_A(1), false, _A(1000), 3600)).to.be.revertedWith("Price already at trigger value");
   });
 
+  it("Should only allow PRICER to set CDFs", async () => {
+    const { currency, wmatic, priceOracle, PriceRiskModule, pool, premiumsAccount, accessManager } =
+      await helpers.loadFixture(deployPoolFixture);
+    const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
+      extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
+    });
+
+    const newCdf = _makeArray(await rm.PRICE_SLOTS(), 0);
+    newCdf[0] = _W("0.2");
+    newCdf[newCdf.length - 1] = _W("0.5");
+
+    expect((await rm.getCDF(1))[0]).to.equal(_W(0));
+    expect((await rm.getCDF(1))[newCdf.length - 1]).to.equal(_W(0));
+
+    await expect(rm.setCDF(1, newCdf)).to.be.revertedWith(
+      accessControlMessage(owner.address, rm.address, "PRICER_ROLE")
+    );
+
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+    await expect(rm.connect(owner).setCDF(1, newCdf)).not.to.be.reverted;
+
+    expect((await rm.getCDF(1))[0]).to.equal(_W("0.2"));
+    expect((await rm.getCDF(1))[newCdf.length - 1]).to.equal(_W("0.5"));
+  });
+
   it("Should convert between different assets", async () => {
     const { currency, wmatic, priceOracle, PriceRiskModule, pool, premiumsAccount } = await helpers.loadFixture(
       deployPoolFixture
@@ -109,7 +159,7 @@ describe("Test PriceRiskModule contract", function () {
     expect(price0).to.equal(0);
     expect(lossProb0).to.equal(0);
 
-    grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
 
     const priceSlots = await rm.PRICE_SLOTS();
 
