@@ -56,13 +56,14 @@ describe("Test PriceRiskModule contract", function () {
     });
 
     const start = (await owner.provider.getBlock("latest")).timestamp;
-    await expect(rm.pricePolicy(_A(100), true, _A(1000), start + 3600)).to.be.reverted;
+    await expect(rm.pricePolicy(_A(100), true, _A(1000), start + 3600)).to.be.revertedWith("Price from not available");
+
+    await priceOracle.setAssetPrice(wmatic.address, _E("0.0005")); // 1 ETH = 2000 WMATIC
+
+    await expect(rm.pricePolicy(_A(100), true, _A(1000), start + 3600)).to.be.revertedWith("Price to not available");
 
     await priceOracle.setAssetPrice(currency.address, _E("0.000333333")); // 1 ETH = 3000 USDC
 
-    await expect(rm.pricePolicy(_A(100), true, _A(1000), start + 3600)).to.be.revertedWith("Price not available");
-
-    await priceOracle.setAssetPrice(wmatic.address, _E("0.0005")); // 1 ETH = 2000 WMATIC
     // 1 WMATIC = 1.5 USDC
 
     await expect(rm.pricePolicy(_A(2), true, _A(1000), start + 3600)).to.be.revertedWith(

@@ -121,16 +121,21 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     return amount.wadMul(_getExchangeRate(assetFrom, assetTo));
   }
 
-  function _getExchangeRate(IERC20Metadata asset_, IERC20Metadata expressedInAsset)
+  function _getExchangeRate(IERC20Metadata assetFrom, IERC20Metadata assetTo)
     public
     view
     returns (uint256)
   {
-    uint256 exchangeRate = _oracle.getAssetPrice(address(asset_)).wadDiv(
-      _oracle.getAssetPrice(address(expressedInAsset))
-    );
-    uint8 decFrom = asset_.decimals();
-    uint8 decTo = expressedInAsset.decimals();
+    uint256 priceFrom = _oracle.getAssetPrice(address(assetFrom));
+    require(priceFrom != 0, "Price from not available");
+
+    uint256 priceTo = _oracle.getAssetPrice(address(assetTo));
+    require(priceTo != 0, "Price to not available");
+
+    uint256 exchangeRate = priceFrom.wadDiv(priceTo);
+
+    uint8 decFrom = assetFrom.decimals();
+    uint8 decTo = assetTo.decimals();
     if (decFrom > decTo) {
       exchangeRate /= 10**(decFrom - decTo);
     } else {
@@ -181,7 +186,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     ];
     uint256 priceJump;
     uint256 decimalConv = 10**(18 - _referenceCurrency.decimals());
-    // Calculate the jump percentage as integer with simetric rounding
+    // Calculate the jump percentage as integer with symmetric rounding
     if (currentPrice > triggerPrice) {
       priceJump = WadRayMath.WAD - (triggerPrice * decimalConv).wadDiv(currentPrice * decimalConv);
     } else {
