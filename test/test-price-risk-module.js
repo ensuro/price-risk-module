@@ -127,7 +127,7 @@ describe("Test PriceRiskModule contract", function () {
     expect((await rm.getCDF(1))[newCdf.length - 1]).to.equal(_W("0.5"));
   });
 
-  it("Should calculate exchange rate between different assets (Wad vs Amount)", async () => {
+  it("Should calculate exchange rate between different assets (Wad vs 6 decimals)", async () => {
     const { currency, wmatic, priceOracle, PriceRiskModule, pool, premiumsAccount } = await helpers.loadFixture(
       deployPoolFixture
     );
@@ -173,7 +173,7 @@ describe("Test PriceRiskModule contract", function () {
     expect(await rm._getExchangeRate(asset9d.address, asset27d.address)).to.equal(_A27(80));
   });
 
-  it("Should calculate policy premium", async () => {
+  it("Should calculate policy premium and loss probability (1% slots)", async () => {
     const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
       await helpers.loadFixture(deployPoolFixture);
     const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
@@ -186,7 +186,7 @@ describe("Test PriceRiskModule contract", function () {
 
     // => 1 WMATIC = 1.5 USDC
 
-    let [price0, lossProb0] = await rm.pricePolicy(_A(1.1), true, _A(1000), start + 3600);
+    const [price0, lossProb0] = await rm.pricePolicy(_A(1.1), true, _A(1000), start + 3600);
     expect(price0).to.equal(0);
     expect(lossProb0).to.equal(0);
 
@@ -194,20 +194,117 @@ describe("Test PriceRiskModule contract", function () {
 
     const priceSlots = await rm.PRICE_SLOTS();
 
-    const cdf = _makeArray(priceSlots, 0);
-
-    cdf[0] = _W("0.1");
-    cdf[priceSlots - 1] = _W("0.1");
+    const cdf = new Array(priceSlots);
+    for (let i = 0; i < priceSlots; i++) cdf[i] = _W(i / 100);
+    cdf[priceSlots - 1] = _W("0.5");
     await rm.connect(owner).setCDF(1, cdf);
 
-    [price0, lossProb0] = await rm.pricePolicy(_A(1.1), true, _A(1000), start + 3600);
-    expect(price0).to.equal(0);
-    expect(lossProb0).to.equal(0);
+    // With a variation of 0.4% ($1.5 -> 1.494) we have the probability of the first slot
+    let [premium, lossProb] = await rm.pricePolicy(_A(1.494), true, _A(1000), start + 3600);
+    expect(lossProb).to.equal(_W(0));
+    expect(premium).to.equal(_W(0));
 
-    const [premium, lossProb] = await rm.pricePolicy(_A(0.8), true, _A(1000), start + 3600);
-    expect(lossProb).to.be.equal(_W("0.1"));
+    // With a variation of 12.3% ($1.5 -> $1.3155) we have the probability of the 12th slot
+    [premium, lossProb] = await rm.pricePolicy(_A(1.3155), true, _A(1000), start + 3600);
+    expect(lossProb).to.equal(_W("0.12"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600));
 
-    expect(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600)).to.be.equal(premium);
+    // With a variation of 26.6% ($1.5 -> $1.1) we have the probability of the 27th slot
+    [premium, lossProb] = await rm.pricePolicy(_A(1.1), true, _A(1000), start + 3600);
+    // expect(price0).to.equal(0);
+    expect(lossProb).to.equal(_W("0.27"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600));
+
+    // With a variation of 46.6% ($1.5 -> $0.8) we have the probability of the last slot
+    [premium, lossProb] = await rm.pricePolicy(_A(0.8), true, _A(1000), start + 3600);
+    expect(lossProb).to.equal(_W("0.5"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600));
+  });
+
+  it("Should calculate policy premium and loss probability (13% slots)", async () => {
+    const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
+      await helpers.loadFixture(deployPoolFixture);
+    const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
+      extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.13")],
+    });
+
+    await priceOracle.setAssetPrice(wmatic.address, _E("1.481481")); // 1 ETH = 0.675 WMATIC
+    await priceOracle.setAssetPrice(currency.address, _E("0.000740")); // 1 ETH = 1350 USDC
+
+    // => 1 WMATIC = 2000 USDC
+
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+
+    const priceSlots = await rm.PRICE_SLOTS();
+    const cdf = _makeArray(priceSlots, 0);
+    cdf[0] = _W("0.5");
+    cdf[2] = _W("0.7");
+    cdf[8] = _W("0.001");
+    await rm.connect(owner).setCDF(2, cdf);
+
+    const start = (await owner.provider.getBlock("latest")).timestamp;
+    const expiration = start + 3600 * 2;
+
+    // With a variation of 0.4% ($2000 -> $1992) we have the probability of the first slot
+    let [premium, lossProb] = await rm.pricePolicy(_A(1992), true, _A(1000), expiration);
+    expect(lossProb).to.equal(_W("0.5"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, expiration));
+
+    // With a variation of 30% we have the probability of the 2nd slot
+    [premium, lossProb] = await rm.pricePolicy(_A(1400), true, _A(1000), expiration);
+    expect(lossProb).to.equal(_W("0.7"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, expiration));
+
+    // With a variation of 100% we have the probability of the 8th slot
+    [premium, lossProb] = await rm.pricePolicy(_A(0), true, _A(1000), expiration);
+    expect(lossProb).to.equal(_W("0.001"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, expiration));
+  });
+
+  it("Should calculate policy premium and loss probability (5% slots, shorted asset)", async () => {
+    const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
+      await helpers.loadFixture(deployPoolFixture);
+    const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
+      extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.05")],
+    });
+
+    await priceOracle.setAssetPrice(wmatic.address, _E("1.481481")); // 1 ETH = 0.675 WMATIC
+    await priceOracle.setAssetPrice(currency.address, _E("0.0005")); // 1 ETH = 2000 USDC
+
+    // => 1 WMATIC = 2963.682 USDC
+
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+
+    const priceSlots = await rm.PRICE_SLOTS();
+    const cdf = _makeArray(priceSlots, 0);
+    cdf[0] = _W("0.5");
+    cdf[5] = _W("0.03");
+    cdf[20] = _W("0.0001");
+    cdf[priceSlots - 1] = _W("0.000005");
+    await rm.connect(owner).setCDF(-3, cdf);
+
+    const start = (await owner.provider.getBlock("latest")).timestamp;
+    const expiration = start + 3600 * 3;
+
+    // With a variation of 0.000444% we have the probability of the first slot
+    let [premium, lossProb] = await rm.pricePolicy(_A(2965), false, _A(2000), expiration);
+    expect(lossProb).to.equal(_W("0.5"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(2000), lossProb, expiration));
+
+    // With a variation of 27% we have the probability of the 5th slot
+    [premium, lossProb] = await rm.pricePolicy(_A(3763), false, _A(2000), expiration);
+    expect(lossProb).to.equal(_W("0.03"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(2000), lossProb, expiration));
+
+    // With a variation of 100% we have the probability of the 20th slot
+    [premium, lossProb] = await rm.pricePolicy(_A(5928), false, _A(2000), expiration);
+    expect(lossProb).to.equal(_W("0.0001"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(2000), lossProb, expiration));
+
+    // With a variation of 150% we have the probability of the last slot
+    [premium, lossProb] = await rm.pricePolicy(_A(7410), false, _A(2000), expiration);
+    expect(lossProb).to.equal(_W("0.000005"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(2000), lossProb, expiration));
   });
 
   it("Should trigger the policy only if threshold met", async () => {

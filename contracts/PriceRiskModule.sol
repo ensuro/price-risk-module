@@ -180,24 +180,27 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     uint256 triggerPrice,
     uint40 duration
   ) internal view returns (uint256) {
+    bool lower = currentPrice > triggerPrice;
     uint256[PRICE_SLOTS] storage pdf = _cdf[
-      int40((duration + 1800) / 3600) * (currentPrice > triggerPrice ? int40(1) : int40(-1))
+      int40((duration + 1800) / 3600) * (lower ? int40(1) : int40(-1))
     ];
-    uint256 priceJump;
-    uint256 decimalConv = 10**(18 - _referenceCurrency.decimals());
+
+    uint256 decimalConv = 10**(ORACLE_DECIMALS - _referenceCurrency.decimals());
+
     // Calculate the jump percentage as integer with symmetric rounding
-    if (currentPrice > triggerPrice) {
+    uint256 priceJump;
+    if (lower) {
       priceJump = WadRayMath.WAD - (triggerPrice * decimalConv).wadDiv(currentPrice * decimalConv);
     } else {
       priceJump = (triggerPrice * decimalConv).wadDiv(currentPrice * decimalConv) - WadRayMath.WAD;
     }
 
-    uint8 downPerc = uint8((priceJump + _slotSize / 2) / _slotSize);
+    uint8 slot = uint8((priceJump + _slotSize / 2) / _slotSize);
 
-    if (downPerc >= PRICE_SLOTS) {
+    if (slot >= PRICE_SLOTS) {
       return pdf[PRICE_SLOTS - 1];
     } else {
-      return pdf[downPerc];
+      return pdf[slot];
     }
   }
 
