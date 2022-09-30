@@ -14,6 +14,7 @@ const {
   getTransactionEvent,
   accessControlMessage,
   _R,
+  grantRole,
 } = require("@ensuro/core/js/test-utils");
 
 hre.upgrades.silenceWarnings();
@@ -359,7 +360,7 @@ describe("Test PriceRiskModule contract", function () {
     await expect(() => rm.triggerPolicy(policyId)).to.changeTokenBalance(currency, cust, _A(1000));
   });
 
-  it("Should trigger the policy only if threshold met - Upper variant", async () => {
+  it("Should trigger the policy only if threshold met - Shorted asset", async () => {
     const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
       await helpers.loadFixture(deployPoolFixture);
     const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
@@ -406,6 +407,32 @@ describe("Test PriceRiskModule contract", function () {
     // Change price of WMATIC to 1.75
     await priceOracle.setAssetPrice(wmatic.address, _E("0.0007"));
     await expect(() => rm.triggerPolicy(policyId)).to.changeTokenBalance(currency, cust, _A(1000));
+  });
+
+  it("Should not allow operations when paused", async () => {
+    const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
+      await helpers.loadFixture(deployPoolFixture);
+    const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
+      extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
+      scrPercentage: "0.5",
+    });
+
+    await expect(rm.pause()).to.be.revertedWith(accessControlMessage(owner.address, rm.address, "GUARDIAN_ROLE"));
+    expect(await rm.paused()).to.equal(false);
+
+    await grantRole(hre, accessManager, "GUARDIAN_ROLE", owner.address);
+    await rm.pause();
+    expect(await rm.paused()).to.equal(true);
+
+    await priceOracle.setAssetPrice(currency.address, _E("0.0004")); // 1 ETH = 2500 USDC
+    await priceOracle.setAssetPrice(wmatic.address, _E("0.00056")); // 1 ETH = 1785.71... WMATIC
+
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+    const priceSlots = await rm.PRICE_SLOTS();
+    const cdf = _makeArray(priceSlots, 0);
+    await expect(rm.setCDF(1, cdf)).to.be.revertedWith("Pausable: paused");
+
+    await expect(rm.triggerPolicy(1)).to.be.revertedWith("Pausable: paused");
   });
 
   async function deployPoolFixture() {

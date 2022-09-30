@@ -144,9 +144,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
   }
 
   function _getCurrentPrice() internal view returns (uint256) {
-    uint256 ret = _convert(_asset, _referenceCurrency, 10**_asset.decimals());
-    require(ret != 0, "Price not available");
-    return ret;
+    return _convert(_asset, _referenceCurrency, 10**_asset.decimals());
   }
 
   /**
