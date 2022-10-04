@@ -10,7 +10,6 @@ import {Policy} from "@ensuro/core/contracts/Policy.sol";
 import {WadRayMath} from "./dependencies/WadRayMath.sol";
 import {IPriceRiskModule} from "./interfaces/IPriceRiskModule.sol";
 import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
-import "hardhat/console.sol";
 
 /**
  * @title PriceRiskModule
@@ -21,6 +20,8 @@ import "hardhat/console.sol";
 contract PriceRiskModule is RiskModule, IPriceRiskModule {
   using SafeERC20 for IERC20Metadata;
   using WadRayMath for uint256;
+
+  uint8 internal constant ORACLE_DECIMALS = 18; // TODO: is this always the case?
 
   bytes32 public constant CUSTOMER_ROLE = keccak256("CUSTOMER_ROLE");
   bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
@@ -121,28 +122,29 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     return amount.wadMul(_getExchangeRate(assetFrom, assetTo));
   }
 
-  function _getExchangeRate(IERC20Metadata asset_, IERC20Metadata expressedInAsset)
+  function _getExchangeRate(IERC20Metadata assetFrom, IERC20Metadata assetTo)
     public
     view
     returns (uint256)
   {
-    uint256 exchangeRate = _oracle.getAssetPrice(address(asset_)).wadDiv(
-      _oracle.getAssetPrice(address(expressedInAsset))
-    );
-    uint8 decFrom = asset_.decimals();
-    uint8 decTo = expressedInAsset.decimals();
-    if (decFrom > decTo) {
-      exchangeRate /= 10**(decFrom - decTo);
-    } else {
-      exchangeRate *= 10**(decTo - decFrom);
-    }
+    uint256 priceFrom = _oracle.getAssetPrice(address(assetFrom));
+    require(priceFrom != 0, "Price from not available");
+
+    uint256 priceTo = _oracle.getAssetPrice(address(assetTo));
+    require(priceTo != 0, "Price to not available");
+
+    uint8 decTo = assetTo.decimals();
+
+    uint256 exchangeRate = priceFrom.wadDiv(priceTo);
+
+    if (ORACLE_DECIMALS >= decTo) exchangeRate /= 10**(ORACLE_DECIMALS - decTo);
+    else exchangeRate *= 10**(decTo - ORACLE_DECIMALS);
+
     return exchangeRate;
   }
 
   function _getCurrentPrice() internal view returns (uint256) {
-    uint256 ret = _convert(_asset, _referenceCurrency, 10**_asset.decimals());
-    require(ret != 0, "Price not available");
-    return ret;
+    return _convert(_asset, _referenceCurrency, 10**_asset.decimals());
   }
 
   /**
@@ -176,24 +178,27 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     uint256 triggerPrice,
     uint40 duration
   ) internal view returns (uint256) {
+    bool lower = currentPrice > triggerPrice;
     uint256[PRICE_SLOTS] storage pdf = _cdf[
-      int40((duration + 1800) / 3600) * (currentPrice > triggerPrice ? int40(1) : int40(-1))
+      int40((duration + 1800) / 3600) * (lower ? int40(1) : int40(-1))
     ];
+
+    uint256 decimalConv = 10**(ORACLE_DECIMALS - _referenceCurrency.decimals());
+
+    // Calculate the jump percentage as integer with symmetric rounding
     uint256 priceJump;
-    uint256 decimalConv = 10**(18 - _referenceCurrency.decimals());
-    // Calculate the jump percentage as integer with simetric rounding
-    if (currentPrice > triggerPrice) {
+    if (lower) {
       priceJump = WadRayMath.WAD - (triggerPrice * decimalConv).wadDiv(currentPrice * decimalConv);
     } else {
       priceJump = (triggerPrice * decimalConv).wadDiv(currentPrice * decimalConv) - WadRayMath.WAD;
     }
 
-    uint8 downPerc = uint8((priceJump + _slotSize / 2) / _slotSize);
+    uint8 slot = uint8((priceJump + _slotSize / 2) / _slotSize);
 
-    if (downPerc >= PRICE_SLOTS) {
+    if (slot >= PRICE_SLOTS) {
       return pdf[PRICE_SLOTS - 1];
     } else {
-      return pdf[downPerc];
+      return pdf[slot];
     }
   }
 
