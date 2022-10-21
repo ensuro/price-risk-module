@@ -77,6 +77,11 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     IPriceOracle oracle_,
     uint256 slotSize_
   ) RiskModule(policyPool_, premiumsAccount_) {
+    require(address(asset_) != address(0), "PriceRiskModule: asset cannot be the zero address");
+    require(
+      address(referenceCurrency_) != address(0),
+      "PriceRiskModule: referenceCurrency cannot be the zero address"
+    );
     _asset = asset_;
     _referenceCurrency = referenceCurrency_;
     _slotSize = slotSize_;
@@ -207,7 +212,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     bool lower,
     uint256 payout,
     uint40 expiration
-  ) external override returns (uint256) {
+  ) external override onlyComponentRole(PRICER_ROLE) returns (uint256) {
     (uint256 premium, uint256 lossProb) = pricePolicy(triggerPrice, lower, payout, expiration);
     require(premium > 0, "Either duration or percentage jump not supported");
 
