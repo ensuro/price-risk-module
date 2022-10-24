@@ -212,7 +212,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     bool lower,
     uint256 payout,
     uint40 expiration
-  ) external override onlyComponentRole(PRICER_ROLE) returns (uint256) {
+  ) external override returns (uint256) {
     (uint256 premium, uint256 lossProb) = pricePolicy(triggerPrice, lower, payout, expiration);
     require(premium > 0, "Either duration or percentage jump not supported");
 

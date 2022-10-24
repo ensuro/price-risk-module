@@ -333,12 +333,6 @@ describe("Test PriceRiskModule contract", function () {
     await rm.connect(owner).setCDF(1, cdf);
 
     await expect(rm.connect(cust).newPolicy(_A(1.2), true, _A(1000), start + 3600)).to.be.revertedWith(
-      accessControlMessage(cust.address, rm.address, "PRICER_ROLE")
-    );
-
-    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", cust.address);
-
-    await expect(rm.connect(cust).newPolicy(_A(1.2), true, _A(1000), start + 3600)).to.be.revertedWith(
       "Either duration or percentage jump not supported"
     );
 
@@ -393,12 +387,6 @@ describe("Test PriceRiskModule contract", function () {
     const [premium, lossProb] = await rm.pricePolicy(_A(1.7), false, _A(1000), start + 3600);
     expect(lossProb).to.be.equal(_W("0.04"));
     await currency.connect(cust).approve(pool.address, premium);
-
-    await expect(rm.connect(cust).newPolicy(_A(1.7), false, _A(1000), start + 3600)).to.be.revertedWith(
-      accessControlMessage(cust.address, rm.address, "PRICER_ROLE")
-    );
-
-    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", cust.address);
 
     let tx = await rm.connect(cust).newPolicy(_A(1.7), false, _A(1000), start + 3600);
     let receipt = await tx.wait();
