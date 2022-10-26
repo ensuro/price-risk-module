@@ -21,7 +21,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
   using SafeERC20 for IERC20Metadata;
   using WadRayMath for uint256;
 
-  uint8 internal constant ORACLE_DECIMALS = 18; // TODO: is this always the case?
+  uint8 internal constant ORACLE_DECIMALS = 18;
 
   bytes32 public constant CUSTOMER_ROLE = keccak256("CUSTOMER_ROLE");
   bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
