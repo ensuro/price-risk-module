@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IPolicyPool} from "@ensuro/core/contracts/interfaces/IPolicyPool.sol";
 import {IPremiumsAccount} from "@ensuro/core/contracts/interfaces/IPremiumsAccount.sol";
 import {RiskModule} from "@ensuro/core/contracts/RiskModule.sol";
 import {Policy} from "@ensuro/core/contracts/Policy.sol";
 import {WadRayMath} from "./dependencies/WadRayMath.sol";
 import {IPriceRiskModule} from "./interfaces/IPriceRiskModule.sol";
-import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
 
 /**
  * @title PriceRiskModule
@@ -21,21 +22,21 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
   using SafeERC20 for IERC20Metadata;
   using WadRayMath for uint256;
 
-  uint8 internal constant ORACLE_DECIMALS = 18;
-
   bytes32 public constant CUSTOMER_ROLE = keccak256("CUSTOMER_ROLE");
   bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
 
   uint8 public constant PRICE_SLOTS = 30;
 
-  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-  IERC20Metadata internal immutable _asset;
-  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-  IERC20Metadata internal immutable _referenceCurrency;
+  uint8 public constant WAD_DECIMALS = 18;
+
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   uint256 internal immutable _slotSize;
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-  IPriceOracle internal immutable _oracle;
+  AggregatorV3Interface internal immutable _assetOracle;
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+  AggregatorV3Interface internal immutable _referenceOracle;
+
+  uint256 internal _oracleTolerance;
 
   struct PolicyData {
     Policy.PolicyData ensuroPolicy;
@@ -66,21 +67,22 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
    * @param policyPool_ The policyPool
    * @param asset_ Address of the asset which price want to protect
    * @param referenceCurrency_ Address of the comparison asset (price will be price(asset)/price(currency))
+   * @param assetOracle_ Address of the price feed oracle for the asset
+   * @param referenceOracle_ Address of the price feed oracle for the reference currency
+   * @param oracleTolerance_ Max acceptable age of price data, in seconds
    * @param slotSize_ Size of each percentage slot in the pdf function (in wad)
    */
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(
     IPolicyPool policyPool_,
     IPremiumsAccount premiumsAccount_,
-    IERC20Metadata asset_,
-    IERC20Metadata referenceCurrency_,
-    IPriceOracle oracle_,
+    AggregatorV3Interface assetOracle_,
+    AggregatorV3Interface referenceOracle_,
     uint256 slotSize_
   ) RiskModule(policyPool_, premiumsAccount_) {
-    _asset = asset_;
-    _referenceCurrency = referenceCurrency_;
     _slotSize = slotSize_;
-    _oracle = oracle_;
+    _assetOracle = assetOracle_;
+    _referenceOracle = referenceOracle_;
   }
 
   /**
@@ -100,7 +102,8 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     uint256 srRoc_,
     uint256 maxPayoutPerPolicy_,
     uint256 exposureLimit_,
-    address wallet_
+    address wallet_,
+    uint256 oracleTolerance_
   ) public initializer {
     __RiskModule_init(
       name_,
@@ -112,44 +115,54 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
       wallet_
     );
     _internalId = 1;
+    _oracleTolerance = oracleTolerance_;
   }
 
   function _convert(
-    IERC20Metadata assetFrom,
-    IERC20Metadata assetTo,
+    AggregatorV3Interface from,
+    AggregatorV3Interface to,
     uint256 amount
   ) internal view returns (uint256) {
-    return amount.wadMul(_getExchangeRate(assetFrom, assetTo));
+    return amount.wadMul(_getExchangeRate(from, to));
   }
 
-  function _getExchangeRate(IERC20Metadata assetFrom, IERC20Metadata assetTo)
+  function _getLatestPrice(AggregatorV3Interface oracle) internal view returns (uint256) {
+    (, int256 price, , uint256 updatedAt, ) = oracle.latestRoundData();
+    require(updatedAt > block.timestamp - _oracleTolerance, "Price is older than tolerable");
+
+    return SafeCast.toUint256(price);
+  }
+
+  function _getExchangeRate(AggregatorV3Interface from, AggregatorV3Interface to)
     public
     view
     returns (uint256)
   {
-    uint256 priceFrom = _oracle.getAssetPrice(address(assetFrom));
+    uint256 priceFrom = scalePrice(_getLatestPrice(from), from.decimals(), WAD_DECIMALS);
     require(priceFrom != 0, "Price from not available");
 
-    uint256 priceTo = _oracle.getAssetPrice(address(assetTo));
+    uint256 priceTo = scalePrice(_getLatestPrice(to), to.decimals(), WAD_DECIMALS);
     require(priceTo != 0, "Price to not available");
 
-    uint8 decTo = assetTo.decimals();
+    return priceFrom.wadDiv(priceTo);
+  }
 
-    uint256 exchangeRate = priceFrom.wadDiv(priceTo);
-
-    if (ORACLE_DECIMALS >= decTo) exchangeRate /= 10**(ORACLE_DECIMALS - decTo);
-    else exchangeRate *= 10**(decTo - ORACLE_DECIMALS);
-
-    return exchangeRate;
+  function scalePrice(
+    uint256 price,
+    uint8 priceDecimals,
+    uint8 decimals
+  ) internal pure returns (uint256) {
+    if (priceDecimals < decimals) return price * 10**(decimals - priceDecimals);
+    else return price / 10**(priceDecimals - decimals);
   }
 
   function _getCurrentPrice() internal view returns (uint256) {
-    return _convert(_asset, _referenceCurrency, 10**_asset.decimals());
+    return _convert(_assetOracle, _referenceOracle, 10**_assetOracle.decimals());
   }
 
   /**
    * @dev Returns the premium and lossProb of the policy
-   * @param triggerPrice Price of the asset_ that will trigger the policy (expressed in _referenceCurrency)
+   * @param triggerPrice Price of the asset that will trigger the policy (expressed in the reference currency)
    * @param lower If true -> triggers if the price is lower, If false -> triggers if the price is higher
    * @param payout Expressed in policyPool.currency()
    * @param expiration Expiration of the policy
@@ -169,7 +182,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     );
     lossProb = _computeLossProb(currentPrice, triggerPrice, expiration - uint40(block.timestamp));
     if (lossProb == 0) return (0, 0);
-    premium = getMinimumPremium(payout, lossProb, expiration); // TODO: extra fee for RiskModule?
+    premium = getMinimumPremium(payout, lossProb, expiration);
     return (premium, lossProb);
   }
 
@@ -183,7 +196,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
       int40((duration + 1800) / 3600) * (lower ? int40(1) : int40(-1))
     ];
 
-    uint256 decimalConv = 10**(ORACLE_DECIMALS - _referenceCurrency.decimals());
+    uint256 decimalConv = 10**(WAD_DECIMALS - _referenceOracle.decimals());
 
     // Calculate the jump percentage as integer with symmetric rounding
     uint256 priceJump;
@@ -263,11 +276,11 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     return _cdf[duration];
   }
 
-  function referenceCurrency() external view override returns (IERC20Metadata) {
-    return _referenceCurrency;
+  function referenceOracle() external view override returns (AggregatorV3Interface) {
+    return _referenceOracle;
   }
 
-  function asset() external view override returns (IERC20Metadata) {
-    return _asset;
+  function assetOracle() external view override returns (AggregatorV3Interface) {
+    return _assetOracle;
   }
 }
