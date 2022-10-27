@@ -46,6 +46,14 @@ describe("Test PriceRiskModule contract", function () {
     expect(await rm.referenceOracle()).to.equal(referenceOracle.address);
   });
 
+  it("Should return the oracle tolerance", async () => {
+    const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
+
+    const { rm, assetOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 18);
+
+    expect(await rm.oracleTolerance()).to.equal(3600);
+  });
+
   it("Should never allow reinitialization", async () => {
     const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
 
@@ -63,6 +71,25 @@ describe("Test PriceRiskModule contract", function () {
         3600
       )
     ).to.be.revertedWith("Initializable: contract is already initialized");
+  });
+
+  it("Should only allow PRICER to set the oracleTolerance", async () => {
+    const { pool, premiumsAccount, accessManager } = await helpers.loadFixture(deployPoolFixture);
+
+    const { rm } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 18);
+
+    expect(await rm.oracleTolerance()).to.equal(3600);
+
+    await expect(rm.setOracleTolerance(1800)).to.be.revertedWith(
+      accessControlMessage(owner.address, rm.address, "PRICER_ROLE")
+    );
+    expect(await rm.oracleTolerance()).to.equal(3600);
+
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+
+    await expect(rm.setOracleTolerance(1800)).not.to.be.reverted;
+
+    expect(await rm.oracleTolerance()).to.equal(1800);
   });
 
   it("Should only allow PRICER to set CDFs", async () => {
@@ -107,8 +134,6 @@ describe("Test PriceRiskModule contract", function () {
 
     const { rm, assetOracle, referenceOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 18);
 
-    const now = await blockchainNow(owner);
-
     // Last round for the asset has no price
     await addRound(assetOracle, _E("0"));
     await expect(rm.pricePolicy(_A(100), true, _A(1000), 3600)).to.be.revertedWith("Price from not available");
@@ -118,6 +143,18 @@ describe("Test PriceRiskModule contract", function () {
     await addRound(referenceOracle, _E("0"));
     await expect(rm.pricePolicy(_A(100), true, _A(1000), 3600)).to.be.revertedWith("Price to not available");
   });
+
+  // it("Should not allow new policies if prices are not fresh", async () => {
+  //   const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
+
+  //   const { rm, assetOracle, referenceOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 18);
+
+  //   const now = await blockchainNow(owner);
+
+  //   // The price for the asset is twice as old as tolerance
+  //   const tolerance = await rm.tolerance();
+  //   await addRound(assetOracle, _E("100"), now - 3600 * 2, now - 3600 * 2);
+  // });
 
   it("Should reject if trigger price has already been reached", async () => {
     const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);

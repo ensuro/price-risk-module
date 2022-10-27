@@ -39,4 +39,10 @@ interface IPriceRiskModule is IRiskModule {
   function referenceOracle() external view returns (AggregatorV3Interface);
 
   function assetOracle() external view returns (AggregatorV3Interface);
+
+  /**
+   * @dev  Max acceptable age for price data.
+   *       If the most recent price is older than (now - tolerance) no policies can be created or resolved.
+   */
+  function oracleTolerance() external view returns (uint256);
 }

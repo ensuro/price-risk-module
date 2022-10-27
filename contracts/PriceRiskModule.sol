@@ -273,6 +273,18 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     _cdf[duration] = cdf;
   }
 
+  /**
+   * @dev Sets the tolerance for price age
+   * @param oracleTolerance_ The new tolerance in seconds.
+   */
+  function setOracleTolerance(uint256 oracleTolerance_)
+    external
+    onlyComponentRole(PRICER_ROLE)
+    whenNotPaused
+  {
+    _oracleTolerance = oracleTolerance_;
+  }
+
   function getCDF(int40 duration) external view returns (uint256[PRICE_SLOTS] memory) {
     return _cdf[duration];
   }
@@ -283,5 +295,9 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
 
   function assetOracle() external view override returns (AggregatorV3Interface) {
     return _assetOracle;
+  }
+
+  function oracleTolerance() external view override returns (uint256) {
+    return _oracleTolerance;
   }
 }
