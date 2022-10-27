@@ -144,17 +144,30 @@ describe("Test PriceRiskModule contract", function () {
     await expect(rm.pricePolicy(_A(100), true, _A(1000), 3600)).to.be.revertedWith("Price to not available");
   });
 
-  // it("Should not allow new policies if prices are not fresh", async () => {
-  //   const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
+  it("Should not allow new policies if prices are not fresh", async () => {
+    const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
 
-  //   const { rm, assetOracle, referenceOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 18);
+    const { rm, assetOracle, referenceOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 18);
 
-  //   const now = await blockchainNow(owner);
+    const now = await blockchainNow(owner);
 
-  //   // The price for the asset is twice as old as tolerance
-  //   const tolerance = await rm.tolerance();
-  //   await addRound(assetOracle, _E("100"), now - 3600 * 2, now - 3600 * 2);
-  // });
+    // The price for the asset is twice as old as tolerance
+    const tolerance = await rm.oracleTolerance();
+    await addRound(assetOracle, _E("100"), now - tolerance * 2, now - tolerance * 2);
+
+    // The price for the reference is current
+    await addRound(referenceOracle, _E("130"));
+
+    await expect(rm.pricePolicy(_W(2), true, _A(1000), 3600)).to.be.revertedWith("Price is older than tolerable");
+
+    // The asset price is now current
+    await addRound(assetOracle, _E("100"));
+
+    // The reference price is old
+    await addRound(referenceOracle, _E("130"), now - tolerance, now - tolerance);
+
+    await expect(rm.pricePolicy(_W(2), true, _A(1000), 3600)).to.be.revertedWith("Price is older than tolerable");
+  });
 
   it("Should reject if trigger price has already been reached", async () => {
     const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
