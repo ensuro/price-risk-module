@@ -269,6 +269,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     onlyComponentRole(PRICER_ROLE)
     whenNotPaused
   {
+    require(duration != 0, "|duration| < 1");
     _cdf[duration] = cdf;
   }
 
