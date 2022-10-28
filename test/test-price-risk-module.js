@@ -21,6 +21,9 @@ const {
 
 hre.upgrades.silenceWarnings();
 
+const skipForkTests = process.env.SKIP_FORK_TESTS === "true";
+const forkIt = skipForkTests ? it.skip : it;
+
 function amountFunction(decimals) {
   // TODO: move this upstream to ensuro utils
   return function (value) {
@@ -629,7 +632,52 @@ describe("Test PriceRiskModule contract", function () {
     await expect(rm.setOracleTolerance(1800)).to.be.revertedWith("Pausable: paused");
   });
 
-  it("Should behave as expected when using the actual chainlink contracts (fork test)", async () => {});
+  forkIt("Should work with real chainlink oracles (forking at https://polygonscan.com/block/34906609)", async () => {
+    if (process.env.ALCHEMY_URL === undefined) throw new Error("Define envvar ALCHEMY_URL for this test");
+    await hre.network.provider.request({
+      method: "hardhat_reset",
+      params: [
+        {
+          forking: {
+            jsonRpcUrl: process.env.ALCHEMY_URL,
+            blockNumber: 34906609, // polygon mainnet
+          },
+        },
+      ],
+    });
+
+    const _U = amountFunction(8);
+    const _W = amountFunction(18); // test-utils' _W truncates to 9 decimals :-/
+
+    const { pool, premiumsAccount, accessManager, currency } = await deployPoolFixture(); // Can't use loadFixture on fork
+
+    const BNB_ORACLE_ADDRESS = "0x82a6c4AF830caa6c97bb504425f6A66165C2c26e";
+    const USDC_ORACLE_ADDRESS = "0xfE4A8cc5b5B2366C1B58Bea3858e81843581b2F7";
+
+    const assetOracle = await hre.ethers.getContractAt("AggregatorV3Interface", BNB_ORACLE_ADDRESS);
+    const referenceOracle = await hre.ethers.getContractAt("AggregatorV3Interface", USDC_ORACLE_ADDRESS);
+
+    // Sanity check: are we in the right chain with the right block?
+    const [, assetPrice] = await assetOracle.latestRoundData();
+    expect(assetPrice).to.equal(_U("293.18"));
+    const [, referencePrice] = await referenceOracle.latestRoundData();
+    expect(referencePrice).to.equal(_U("1.00002339"));
+
+    // Contract setup
+    const PriceRiskModule = await hre.ethers.getContractFactory("PriceRiskModule");
+    const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
+      extraConstructorArgs: [assetOracle.address, referenceOracle.address, _W("0.01")],
+      extraArgs: [3600],
+    });
+
+    expect(await rm._getExchangeRate(assetOracle.address, referenceOracle.address)).to.equal(
+      _W("293.173142680192710293")
+    );
+
+    expect(await rm._getExchangeRate(referenceOracle.address, assetOracle.address)).to.equal(
+      _W("0.003410953646224163")
+    );
+  });
 
   async function deployPoolFixture() {
     const currency = await initCurrency(
