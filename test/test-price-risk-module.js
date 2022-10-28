@@ -621,8 +621,15 @@ describe("Test PriceRiskModule contract", function () {
     const cdf = _makeArray(priceSlots, 0);
     await expect(rm.setCDF(1, cdf)).to.be.revertedWith("Pausable: paused");
 
+    await expect(rm.newPolicy(_E("1.1"), true, _A(1000), (await blockchainNow(owner)) + 3600)).to.be.revertedWith(
+      "Pausable: paused"
+    );
     await expect(rm.triggerPolicy(1)).to.be.revertedWith("Pausable: paused");
+
+    await expect(rm.setOracleTolerance(1800)).to.be.revertedWith("Pausable: paused");
   });
+
+  it("Should behave as expected when using the actual chainlink contracts (fork test)", async () => {});
 
   async function deployPoolFixture() {
     const currency = await initCurrency(
