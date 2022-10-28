@@ -22,6 +22,7 @@
     "ethers": "~5.7.1",
     "hardhat": "^2.11.2",
     "hardhat-contract-sizer": "^2.6.1",
+    "hardhat-dependency-compiler": "^1.1.3",
     "hardhat-gas-reporter": "^1.0.9",
     "prettier": "^2.7.1",
     "prettier-plugin-solidity": "^1.0.0-beta.24",
@@ -33,11 +34,10 @@
     "typescript": "^4.8.2"
   },
   "dependencies": {
-    "@ensuro/core": "^2.0.0-beta9",
+    "@chainlink/contracts": "^0.5.1",
+    "@ensuro/core": "^2.0.0-beta11",
     "@openzeppelin/contracts": "^4.7.3",
-    "@openzeppelin/contracts-upgradeable": "^4.7.3",
-    "@uniswap/v2-periphery": "^1.1.0-beta.0",
-    "hardhat-dependency-compiler": "^1.1.3"
+    "@openzeppelin/contracts-upgradeable": "^4.7.3"
   },
   "repository": {
     "type": "git",

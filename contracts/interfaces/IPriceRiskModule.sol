@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
+import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import {IRiskModule} from "@ensuro/core/contracts/interfaces/IRiskModule.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 
@@ -30,12 +31,19 @@ interface IPriceRiskModule is IRiskModule {
     uint256 triggerPrice,
     bool lower,
     uint256 payout,
-    uint40 expiration
+    uint40 expiration,
+    address onBehalfOf
   ) external returns (uint256);
 
   function triggerPolicy(uint256 policyId) external;
 
-  function referenceCurrency() external view returns (IERC20Metadata);
+  function referenceOracle() external view returns (AggregatorV3Interface);
 
-  function asset() external view returns (IERC20Metadata);
+  function assetOracle() external view returns (AggregatorV3Interface);
+
+  /**
+   * @dev  Max acceptable age for price data.
+   *       If the most recent price is older than (now - tolerance) no policies can be created or resolved.
+   */
+  function oracleTolerance() external view returns (uint256);
 }
