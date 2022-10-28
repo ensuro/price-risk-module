@@ -22,7 +22,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
   using SafeERC20 for IERC20Metadata;
   using WadRayMath for uint256;
 
-  bytes32 public constant CUSTOMER_ROLE = keccak256("CUSTOMER_ROLE");
+  bytes32 public constant ORACLE_ADMIN_ROLE = keccak256("ORACLE_ADMIN_ROLE");
   bytes32 public constant PRICER_ROLE = keccak256("PRICER_ROLE");
 
   uint8 public constant PRICE_SLOTS = 30;
@@ -342,7 +342,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
    */
   function setOracleTolerance(uint256 oracleTolerance_)
     external
-    onlyComponentRole(PRICER_ROLE)
+    onlyComponentRole(ORACLE_ADMIN_ROLE)
     whenNotPaused
   {
     _oracleTolerance = oracleTolerance_;

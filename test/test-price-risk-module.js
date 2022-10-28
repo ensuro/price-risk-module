@@ -91,7 +91,7 @@ describe("Test PriceRiskModule contract", function () {
     ).to.be.revertedWith("Initializable: contract is already initialized");
   });
 
-  it("Should only allow PRICER to set the oracleTolerance", async () => {
+  it("Should only allow ORACLE_ADMIN to set the oracleTolerance", async () => {
     const { pool, premiumsAccount, accessManager } = await helpers.loadFixture(deployPoolFixture);
 
     const { rm } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 18);
@@ -99,11 +99,11 @@ describe("Test PriceRiskModule contract", function () {
     expect(await rm.oracleTolerance()).to.equal(3600);
 
     await expect(rm.setOracleTolerance(1800)).to.be.revertedWith(
-      accessControlMessage(owner.address, rm.address, "PRICER_ROLE")
+      accessControlMessage(owner.address, rm.address, "ORACLE_ADMIN_ROLE")
     );
     expect(await rm.oracleTolerance()).to.equal(3600);
 
-    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+    await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner.address);
 
     await expect(rm.setOracleTolerance(1800)).not.to.be.reverted;
 
@@ -714,6 +714,7 @@ describe("Test PriceRiskModule contract", function () {
     );
     await expect(rm.triggerPolicy(1)).to.be.revertedWith("Pausable: paused");
 
+    await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner.address);
     await expect(rm.setOracleTolerance(1800)).to.be.revertedWith("Pausable: paused");
   });
 
