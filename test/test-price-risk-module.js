@@ -16,6 +16,7 @@ const {
   _R,
   grantRole,
 } = require("@ensuro/core/js/test-utils");
+const { addRiskModuleWithParams } = require("./test-helper");
 
 hre.upgrades.silenceWarnings();
 
@@ -433,6 +434,48 @@ describe("Test PriceRiskModule contract", function () {
     await expect(rm.setCDF(1, cdf)).to.be.revertedWith("Pausable: paused");
 
     await expect(rm.triggerPolicy(1)).to.be.revertedWith("Pausable: paused");
+  });
+
+  it("PriceRiskModule asset address validation", async () => {
+    const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
+      await helpers.loadFixture(deployPoolFixture);
+
+    const zeroAddress = "0x0000000000000000000000000000000000000000";
+    let rm = await expect(
+      addRiskModuleWithParams(pool, undefined, premiumsAccount, undefined, PriceRiskModule, {
+        extraConstructorArgs: [zeroAddress, currency.address, priceOracle.address, _W("0.01")],
+        scrPercentage: "0.5",
+      })
+    ).to.be.revertedWith("PriceRiskModule: asset cannot be the zero address");
+
+    rm = await addRiskModuleWithParams(pool, undefined, premiumsAccount, undefined, PriceRiskModule, {
+      extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
+      scrPercentage: "0.5",
+    });
+
+    expect(await rm.name()).to.equal("RiskModule");
+    expect(await rm.asset()).to.equal(wmatic.address);
+  });
+
+  it("PriceRiskModule currency address validation", async () => {
+    const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
+      await helpers.loadFixture(deployPoolFixture);
+
+    const zeroAddress = "0x0000000000000000000000000000000000000000";
+    let rm = await expect(
+      addRiskModuleWithParams(pool, undefined, premiumsAccount, undefined, PriceRiskModule, {
+        extraConstructorArgs: [wmatic.address, zeroAddress, priceOracle.address, _W("0.01")],
+        scrPercentage: "0.5",
+      })
+    ).to.be.revertedWith("PriceRiskModule: referenceCurrency cannot be the zero address");
+
+    rm = await addRiskModuleWithParams(pool, undefined, premiumsAccount, undefined, PriceRiskModule, {
+      extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
+      scrPercentage: "0.5",
+    });
+
+    expect(await rm.name()).to.equal("RiskModule");
+    expect(await rm.referenceCurrency()).to.equal(currency.address);
   });
 
   async function deployPoolFixture() {
