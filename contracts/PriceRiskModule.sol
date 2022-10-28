@@ -81,6 +81,10 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     AggregatorV3Interface referenceOracle_,
     uint256 slotSize_
   ) RiskModule(policyPool_, premiumsAccount_) {
+    require(
+      address(assetOracle_) != address(0),
+      "PriceRiskModule: assetOracle_ cannot be the zero address"
+    );
     _slotSize = slotSize_;
     _assetOracle = assetOracle_;
     _referenceOracle = referenceOracle_;
