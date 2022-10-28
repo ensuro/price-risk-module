@@ -457,6 +457,53 @@ describe("Test PriceRiskModule contract", function () {
     expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600));
   });
 
+  it("Should calculate policy premium and loss probability (1% slots, Ray vs 6 decimals)", async () => {
+    const { pool, premiumsAccount, accessManager } = await helpers.loadFixture(deployPoolFixture);
+
+    const { rm, assetOracle, referenceOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 27, 6);
+
+    const _A27 = _R;
+
+    await addRound(assetOracle, _A27("0.0005")); // 1 Ray = 2000 WMATIC
+    await addRound(referenceOracle, _A("0.000333")); // 1 Ray = 3000 RTK
+    // Therefore 1 WMATIC = 1.5 RTK
+
+    const start = await blockchainNow(owner);
+
+    const [price0, lossProb0] = await rm.pricePolicy(_A("1.1"), true, _A(1000), start + 3600);
+    expect(price0).to.equal(0);
+    expect(lossProb0).to.equal(0);
+
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+
+    const priceSlots = await rm.PRICE_SLOTS();
+
+    const cdf = new Array(priceSlots);
+    for (let i = 0; i < priceSlots; i++) cdf[i] = _W(i / 100);
+    cdf[priceSlots - 1] = _W("0.5");
+    await rm.connect(owner).setCDF(1, cdf);
+
+    // With a variation of 0.4% ($1.5 -> 1.494) we have the probability of the first slot
+    let [premium, lossProb] = await rm.pricePolicy(_A("1.494"), true, _A(1000), start + 3600);
+    expect(lossProb).to.equal(_W(0));
+    expect(premium).to.equal(_W(0));
+
+    // With a variation of 12.3% ($1.5 -> $1.3155) we have the probability of the 12th slot
+    [premium, lossProb] = await rm.pricePolicy(_A("1.3155"), true, _A(1000), start + 3600);
+    expect(lossProb).to.equal(_W("0.12"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600));
+
+    // With a variation of 26.6% ($1.5 -> $1.1) we have the probability of the 27th slot
+    [premium, lossProb] = await rm.pricePolicy(_A("1.1"), true, _A(1000), start + 3600);
+    expect(lossProb).to.equal(_W("0.27"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600));
+
+    // With a variation of 46.6% ($1.5 -> $0.8) we have the probability of the last slot
+    [premium, lossProb] = await rm.pricePolicy(_A("0.8"), true, _A(1000), start + 3600);
+    expect(lossProb).to.equal(_W("0.5"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600));
+  });
+
   it("Should trigger the policy only if threshold met", async () => {
     const { pool, premiumsAccount, accessManager, currency } = await helpers.loadFixture(deployPoolFixture);
 
