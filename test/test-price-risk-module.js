@@ -191,10 +191,9 @@ describe("Test PriceRiskModule contract", function () {
     const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
 
     const PriceRiskModule = await hre.ethers.getContractFactory("PriceRiskModule");
-    const zeroAddress = "0x0000000000000000000000000000000000000000";
     await expect(
       addRiskModule(pool, premiumsAccount, PriceRiskModule, {
-        extraConstructorArgs: [zeroAddress, zeroAddress, _W("0.01")],
+        extraConstructorArgs: [hre.ethers.constants.AddressZero, hre.ethers.constants.AddressZero, _W("0.01")],
         extraArgs: [3600],
       })
     ).to.be.revertedWith("PriceRiskModule: assetOracle_ cannot be the zero address");
@@ -212,6 +211,78 @@ describe("Test PriceRiskModule contract", function () {
     await expect(rm.pricePolicy(_E("2"), true, _A(1000), 3600)).to.be.revertedWith("Price already at trigger value");
 
     await expect(rm.pricePolicy(_E("1"), false, _A(1000), 3600)).to.be.revertedWith("Price already at trigger value");
+  });
+
+  it("Should allow address(0) for the reference oracle", async () => {
+    const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
+
+    const PriceRiskModule = await hre.ethers.getContractFactory("PriceRiskModule");
+
+    const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
+      extraConstructorArgs: [
+        "0x82a6c4AF830caa6c97bb504425f6A66165C2c26e",
+        hre.ethers.constants.AddressZero,
+        _W("0.01"),
+      ],
+      extraArgs: [3600],
+    });
+
+    expect(await rm.referenceOracle()).to.equal(hre.ethers.constants.AddressZero);
+  });
+
+  it("Should calculate exchange rate for single asset with no reference", async () => {
+    const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
+
+    const { rm, assetOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18);
+
+    expect(await rm.referenceOracle()).to.equal(hre.ethers.constants.AddressZero);
+
+    await addRound(assetOracle, _E("0.0005")); // 1 ETH = 2000 USD
+
+    expect(await rm._getExchangeRate(assetOracle.address, hre.ethers.constants.AddressZero)).to.equal(_E("0.0005"));
+  });
+
+  it("Should calculate policy premium and loss for single asset with no reference", async () => {
+    const { pool, premiumsAccount, accessManager } = await helpers.loadFixture(deployPoolFixture);
+
+    const { rm, assetOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18);
+
+    await addRound(assetOracle, _E("0.00125")); // 1 ETH = 800 USDC
+
+    const start = await blockchainNow(owner);
+
+    const [price0, lossProb0] = await rm.pricePolicy(_E("0.001"), true, _A(1000), start + 3600);
+    expect(price0).to.equal(0);
+    expect(lossProb0).to.equal(0);
+
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+
+    const priceSlots = await rm.PRICE_SLOTS();
+
+    const cdf = new Array(priceSlots);
+    for (let i = 0; i < priceSlots; i++) cdf[i] = _W(i / 100);
+    cdf[priceSlots - 1] = _W("0.5");
+    await rm.connect(owner).setCDF(1, cdf);
+
+    // With a variation of 0.4% we have the probability of the first slot
+    let [premium, lossProb] = await rm.pricePolicy(_E("0.00124502"), true, _A(1000), start + 3600);
+    expect(lossProb).to.equal(_W(0));
+    expect(premium).to.equal(_W(0));
+
+    // With a variation of 12.3% we have the probability of the 12th slot
+    [premium, lossProb] = await rm.pricePolicy(_E("0.00109625"), true, _A(1000), start + 3600);
+    expect(lossProb).to.equal(_W("0.12"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600));
+
+    // With a variation of 26.6% we have the probability of the 27th slot
+    [premium, lossProb] = await rm.pricePolicy(_E("0.0009175"), true, _A(1000), start + 3600);
+    expect(lossProb).to.equal(_W("0.27"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600));
+
+    // With a variation of 46.6% we have the probability of the last slot
+    [premium, lossProb] = await rm.pricePolicy(_E("0.0006675"), true, _A(1000), start + 3600);
+    expect(lossProb).to.equal(_W("0.5"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600));
   });
 
   it("Should calculate exchange rate between different assets (Wad vs 6 decimals)", async () => {
@@ -747,8 +818,13 @@ async function addRiskModuleWithOracles(
   const assetOracle = await PriceOracle.deploy(assetDecimals);
   assetOracle._P = amountFunction(assetDecimals);
 
-  const referenceOracle = await PriceOracle.deploy(referenceDecimals);
-  referenceOracle._P = amountFunction(referenceDecimals);
+  let referenceOracle;
+  if (referenceDecimals !== undefined) {
+    referenceOracle = await PriceOracle.deploy(referenceDecimals);
+    referenceOracle._P = amountFunction(referenceDecimals);
+  } else {
+    referenceOracle = { address: hre.ethers.constants.AddressZero };
+  }
 
   const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
     extraConstructorArgs: [assetOracle.address, referenceOracle.address, slotSize || _W("0.01")],

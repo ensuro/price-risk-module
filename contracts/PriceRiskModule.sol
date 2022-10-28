@@ -67,10 +67,12 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
    *      Note that, although it's supported that assetOracle_ and  referenceOracle_ have different number
    *      of decimals, they're assumed to be in the same denomination. For instance, assetOracle_ could be
    *      WMATIC/ETH and referenceOracle_ could be for USDC/ETH.
-   *      This cannot be validated by the contract, so be when constructing.
+   *      This cannot be validated by the contract, so be careful when constructing.
+   *
    * @param policyPool_ The policyPool
    * @param assetOracle_ Address of the price feed oracle for the asset
-   * @param referenceOracle_ Address of the price feed oracle for the reference currency
+   * @param referenceOracle_ Address of the price feed oracle for the reference currency. If it's
+   *                         the zero address the asset price will be considered directly.
    * @param slotSize_ Size of each percentage slot in the pdf function (in wad)
    */
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -178,7 +180,9 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
 
   /**
    * @dev Calculates the premium and lossProb of a policy
-   * @param triggerPrice Price of the asset that will trigger the policy (expressed in the reference currency as reported by the oracle)
+   * @param triggerPrice Price of the asset that will trigger the policy (expressed in the reference currency
+   *                     as reported by the oracle, or the asset denomination as reported by the oracle if no
+   *                     referenceAsset)
    * @param lower If true -> triggers if the price is lower, If false -> triggers if the price is higher
    * @param payout Expressed in policyPool.currency()
    * @param expiration Expiration of the policy
@@ -197,12 +201,15 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
       "Price already at trigger value"
     );
     lossProb = _computeLossProb(currentPrice, triggerPrice, expiration - uint40(block.timestamp));
+
     if (lossProb == 0) return (0, 0);
     premium = getMinimumPremium(payout, lossProb, expiration);
     return (premium, lossProb);
   }
 
   function _getCurrentPrice() internal view returns (uint256) {
+    if (address(_referenceOracle) == address(0)) return _getLatestPrice(_assetOracle);
+
     return _convert(_assetOracle, _referenceOracle, 10**_assetOracle.decimals());
   }
 
@@ -218,6 +225,10 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     AggregatorV3Interface to,
     uint256 amount
   ) internal view returns (uint256) {
+    require(
+      address(from) != address(0) && address(to) != address(0),
+      "Both oracles required for conversion"
+    );
     uint256 converted = scalePrice(amount, from.decimals(), WAD_DECIMALS).wadMul(
       _getExchangeRate(from, to)
     );
@@ -227,11 +238,12 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
   /**
    * @dev Calculates the exchange rate between the prices returned by the two aggregators
    *      Assumes that both aggregators are returning prices using the same quote.
-   *      Although it's not required that the aggregators return prices with the same number of
+   *      Although it's usual that the aggregators return prices with the same number of
    *      decimals, this is not required. Both prices will be scaled to Wad before calculating the
    *      rate.
    * @param base the aggregator for the base
-   * @param quote the aggregator for the quote asset
+   * @param quote the aggregator for the quote asset. Can be the zero address, in which case the
+   *              base asset price is returned without any calculations performed.
    * @return The exchange rate from/to in Wad
    */
   function _getExchangeRate(AggregatorV3Interface base, AggregatorV3Interface quote)
@@ -239,8 +251,12 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     view
     returns (uint256)
   {
+    require(address(base) != address(0), "Base oracle required");
+
     uint256 basePrice = scalePrice(_getLatestPrice(base), base.decimals(), WAD_DECIMALS);
     require(basePrice != 0, "Price from not available");
+
+    if (address(quote) == address(0)) return basePrice;
 
     uint256 quotePrice = scalePrice(_getLatestPrice(quote), quote.decimals(), WAD_DECIMALS);
     require(quotePrice != 0, "Price to not available");
@@ -274,14 +290,26 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
       int40((duration + 1800) / 3600) * (lower ? int40(1) : int40(-1))
     ];
 
-    uint256 decimalConv = 10**(WAD_DECIMALS - _referenceOracle.decimals());
+    uint8 priceDecimals = address(_referenceOracle) == address(0)
+      ? _assetOracle.decimals()
+      : _referenceOracle.decimals();
 
     // Calculate the jump percentage as integer with symmetric rounding
     uint256 priceJump;
     if (lower) {
-      priceJump = WadRayMath.WAD - (triggerPrice * decimalConv).wadDiv(currentPrice * decimalConv);
+      // 1 - trigger/current
+      priceJump =
+        WadRayMath.WAD -
+        scalePrice(triggerPrice, priceDecimals, WAD_DECIMALS).wadDiv(
+          scalePrice(currentPrice, priceDecimals, WAD_DECIMALS)
+        );
     } else {
-      priceJump = (triggerPrice * decimalConv).wadDiv(currentPrice * decimalConv) - WadRayMath.WAD;
+      // trigger/current - 1
+      priceJump =
+        scalePrice(triggerPrice, priceDecimals, WAD_DECIMALS).wadDiv(
+          scalePrice(currentPrice, priceDecimals, WAD_DECIMALS)
+        ) -
+        WadRayMath.WAD;
     }
 
     uint8 slot = uint8((priceJump + _slotSize / 2) / _slotSize);
