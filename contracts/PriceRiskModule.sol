@@ -63,13 +63,14 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
   );
 
   /**
-   * @dev Constructs the LiquidationProtectionRiskModule
+   * @dev Constructs the PriceRiskModule.
+   *      Note that, although it's supported that assetOracle_ and  referenceOracle_ have different number
+   *      of decimals, they're assumed to be in the same denomination. For instance, assetOracle_ could be
+   *      WMATIC/ETH and referenceOracle_ could be for USDC/ETH.
+   *      This cannot be validated by the contract, so be when constructing.
    * @param policyPool_ The policyPool
-   * @param asset_ Address of the asset which price want to protect
-   * @param referenceCurrency_ Address of the comparison asset (price will be price(asset)/price(currency))
    * @param assetOracle_ Address of the price feed oracle for the asset
    * @param referenceOracle_ Address of the price feed oracle for the reference currency
-   * @param oracleTolerance_ Max acceptable age of price data, in seconds
    * @param slotSize_ Size of each percentage slot in the pdf function (in wad)
    */
   /// @custom:oz-upgrades-unsafe-allow constructor
@@ -94,6 +95,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
    * @param maxPayoutPerPolicy_ Maximum payout per policy (in wad)
    * @param exposureLimit_ Max exposure (sum of payouts) to be allocated to this module (in wad)
    * @param wallet_ Address of the RiskModule provider
+   * @param oracleTolerance_ Max acceptable age of price data, in seconds
    */
   function initialize(
     string memory name_,
@@ -118,6 +120,15 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     _oracleTolerance = oracleTolerance_;
   }
 
+  /**
+   * @dev Creates a new policy
+   * @param triggerPrice The price at which the policy should trigger, expressed with the same
+   *                     decimals as reported by the asset oracle
+   * @param lower If true -> triggers if the price is lower, If false -> triggers if the price is higher
+   * @param payout Expressed in policyPool.currency()
+   * @param expiration The policy expiration timestamp
+   * @return policyId
+   */
   function newPolicy(
     uint256 triggerPrice,
     bool lower,
@@ -162,7 +173,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
   }
 
   /**
-   * @dev Returns the premium and lossProb of the policy
+   * @dev Calculates the premium and lossProb of a policy
    * @param triggerPrice Price of the asset that will trigger the policy (expressed in the reference currency as reported by the oracle)
    * @param lower If true -> triggers if the price is lower, If false -> triggers if the price is higher
    * @param payout Expressed in policyPool.currency()
