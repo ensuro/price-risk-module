@@ -45,5 +45,10 @@ interface IPriceRiskModule is IRiskModule {
    * @dev  Max acceptable age for price data.
    *       If the most recent price is older than (now - tolerance) no policies can be created or resolved.
    */
-  function oracleTolerance() external view returns (uint256);
+  function oracleTolerance() external view returns (uint40);
+
+  /**
+   * @dev In seconds, the minimum time that must elapse before a policy can be triggered, since creation
+   */
+  function minDuration() external view returns (uint40);
 }

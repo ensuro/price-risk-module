@@ -36,8 +36,6 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   AggregatorV3Interface internal immutable _referenceOracle;
 
-  uint256 internal _oracleTolerance;
-
   struct PolicyData {
     Policy.PolicyData ensuroPolicy;
     uint256 triggerPrice;
@@ -53,7 +51,13 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
   //   [PRICE_SLOTS - 1] = prob of ([PRICE_SLOTS - 1, -infinite%)
   mapping(int40 => uint256[PRICE_SLOTS]) internal _cdf;
 
-  uint96 internal _internalId;
+  struct State {
+    uint96 internalId; // internalId used to identify created policies
+    uint40 oracleTolerance; // In seconds, the tolerance for out-of-date oracle price
+    uint40 minDuration; // In seconds, the minimum time that must elapse before a policy can be triggered
+  }
+
+  State internal _state;
 
   event NewPricePolicy(
     address indexed customer,
@@ -111,7 +115,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     uint256 maxPayoutPerPolicy_,
     uint256 exposureLimit_,
     address wallet_,
-    uint256 oracleTolerance_
+    uint40 oracleTolerance_
   ) public initializer {
     __RiskModule_init(
       name_,
@@ -122,8 +126,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
       exposureLimit_,
       wallet_
     );
-    _internalId = 1;
-    _oracleTolerance = oracleTolerance_;
+    _state = State({internalId: 1, oracleTolerance: oracleTolerance_, minDuration: 3600});
   }
 
   /**
@@ -147,7 +150,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     (uint256 premium, uint256 lossProb) = pricePolicy(triggerPrice, lower, payout, expiration);
     require(premium > 0, "Either duration or percentage jump not supported");
 
-    uint256 policyId = (uint256(uint160(address(this))) << 96) + _internalId;
+    uint256 policyId = (uint256(uint160(address(this))) << 96) + _state.internalId;
     PolicyData storage priceRiskPolicy = _policies[policyId];
     priceRiskPolicy.ensuroPolicy = _newPolicy(
       payout,
@@ -156,9 +159,9 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
       expiration,
       _msgSender(),
       onBehalfOf,
-      _internalId
+      _state.internalId
     );
-    _internalId += 1;
+    _state.internalId += 1;
     priceRiskPolicy.triggerPrice = triggerPrice;
     priceRiskPolicy.lower = lower;
     emit NewPricePolicy(onBehalfOf, policyId, triggerPrice, lower);
@@ -167,6 +170,10 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
 
   function triggerPolicy(uint256 policyId) external override whenNotPaused {
     PolicyData storage policy = _policies[policyId];
+    require(
+      (block.timestamp - policy.ensuroPolicy.start) >= _state.minDuration,
+      "Too soon to trigger the policy"
+    );
     uint256 currentPrice = _getCurrentPrice();
     require(
       !policy.lower || currentPrice <= policy.triggerPrice,
@@ -202,7 +209,9 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
       (lower && currentPrice > triggerPrice) || (!lower && currentPrice < triggerPrice),
       "Price already at trigger value"
     );
-    lossProb = _computeLossProb(currentPrice, triggerPrice, expiration - uint40(block.timestamp));
+    uint40 duration = expiration - uint40(block.timestamp);
+    require(duration >= _state.minDuration, "The policy expires too soon");
+    lossProb = _computeLossProb(currentPrice, triggerPrice, duration);
 
     if (lossProb == 0) return (0, 0);
     premium = getMinimumPremium(payout, lossProb, expiration);
@@ -268,7 +277,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
 
   function _getLatestPrice(AggregatorV3Interface oracle) internal view returns (uint256) {
     (, int256 price, , uint256 updatedAt, ) = oracle.latestRoundData();
-    require(updatedAt > block.timestamp - _oracleTolerance, "Price is older than tolerable");
+    require(updatedAt > block.timestamp - _state.oracleTolerance, "Price is older than tolerable");
 
     return SafeCast.toUint256(price);
   }
@@ -342,12 +351,24 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
    * @dev Sets the tolerance for price age
    * @param oracleTolerance_ The new tolerance in seconds.
    */
-  function setOracleTolerance(uint256 oracleTolerance_)
+  function setOracleTolerance(uint40 oracleTolerance_)
     external
     onlyComponentRole(ORACLE_ADMIN_ROLE)
     whenNotPaused
   {
-    _oracleTolerance = oracleTolerance_;
+    _state.oracleTolerance = oracleTolerance_;
+  }
+
+  /**
+   * @dev Sets the minimum duration before a policy can be triggered
+   * @param minDuration_ The new minimum duration in seconds.
+   */
+  function setMinDuration(uint40 minDuration_)
+    external
+    onlyComponentRole(ORACLE_ADMIN_ROLE)
+    whenNotPaused
+  {
+    _state.minDuration = minDuration_;
   }
 
   function getCDF(int40 duration) external view returns (uint256[PRICE_SLOTS] memory) {
@@ -362,7 +383,11 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     return _assetOracle;
   }
 
-  function oracleTolerance() external view override returns (uint256) {
-    return _oracleTolerance;
+  function oracleTolerance() external view override returns (uint40) {
+    return _state.oracleTolerance;
+  }
+
+  function minDuration() external view override returns (uint40) {
+    return _state.minDuration;
   }
 }
