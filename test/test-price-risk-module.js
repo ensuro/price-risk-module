@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
+const ethers = require("ethers");
 const {
   initCurrency,
   deployPool,
@@ -8,7 +9,6 @@ const {
   _E,
   _W,
   addRiskModule,
-  amountFunction,
   grantComponentRole,
   addEToken,
   getTransactionEvent,
@@ -16,9 +16,22 @@ const {
   _R,
   grantRole,
   blockchainNow,
+  _BN,
 } = require("@ensuro/core/js/test-utils");
 
 hre.upgrades.silenceWarnings();
+
+function amountFunction(decimals) {
+  // TODO: move this upstream to ensuro utils
+  return function (value) {
+    if (value === undefined) return undefined;
+    if (typeof value === "string" || value instanceof String) {
+      return ethers.utils.parseUnits(value, decimals);
+    } else {
+      return _BN(Math.round(value * 1e6)).mul(_BN(10).pow(decimals - 6));
+    }
+  };
+}
 
 describe("Test PriceRiskModule contract", function () {
   let owner, lp, cust;
@@ -27,6 +40,7 @@ describe("Test PriceRiskModule contract", function () {
   beforeEach(async () => {
     [owner, lp, cust] = await hre.ethers.getSigners();
 
+    const decimals = 6;
     _A = amountFunction(6);
   });
 
@@ -350,6 +364,99 @@ describe("Test PriceRiskModule contract", function () {
     expect(premium).to.equal(await rm.getMinimumPremium(_A(2000), lossProb, expiration));
   });
 
+  it("Should calculate policy premium and loss probability (1% slots, Wad vs 6 decimals)", async () => {
+    const { pool, premiumsAccount, accessManager } = await helpers.loadFixture(deployPoolFixture);
+
+    const { rm, assetOracle, referenceOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 6);
+
+    await addRound(assetOracle, _E("0.0005")); // 1 USD = 2000 WMATIC
+    await addRound(referenceOracle, _A("0.000333")); // 1 USD = 3000 RTK
+    // Therefore 1 WMATIC = 1.5 RTK
+
+    const start = await blockchainNow(owner);
+
+    const [price0, lossProb0] = await rm.pricePolicy(_A("1.1"), true, _A(1000), start + 3600);
+    expect(price0).to.equal(0);
+    expect(lossProb0).to.equal(0);
+
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+
+    const priceSlots = await rm.PRICE_SLOTS();
+
+    const cdf = new Array(priceSlots);
+    for (let i = 0; i < priceSlots; i++) cdf[i] = _W(i / 100);
+    cdf[priceSlots - 1] = _W("0.5");
+    await rm.connect(owner).setCDF(1, cdf);
+
+    // With a variation of 0.4% ($1.5 -> 1.494) we have the probability of the first slot
+    let [premium, lossProb] = await rm.pricePolicy(_A("1.494"), true, _A(1000), start + 3600);
+    expect(lossProb).to.equal(_W(0));
+    expect(premium).to.equal(_W(0));
+
+    // With a variation of 12.3% ($1.5 -> $1.3155) we have the probability of the 12th slot
+    [premium, lossProb] = await rm.pricePolicy(_A("1.3155"), true, _A(1000), start + 3600);
+    expect(lossProb).to.equal(_W("0.12"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600));
+
+    // With a variation of 26.6% ($1.5 -> $1.1) we have the probability of the 27th slot
+    [premium, lossProb] = await rm.pricePolicy(_A("1.1"), true, _A(1000), start + 3600);
+    expect(lossProb).to.equal(_W("0.27"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600));
+
+    // With a variation of 46.6% ($1.5 -> $0.8) we have the probability of the last slot
+    [premium, lossProb] = await rm.pricePolicy(_A("0.8"), true, _A(1000), start + 3600);
+    expect(lossProb).to.equal(_W("0.5"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600));
+  });
+
+  it("Should calculate policy premium and loss probability (1% slots, Ray vs 9 decimals)", async () => {
+    const { pool, premiumsAccount, accessManager } = await helpers.loadFixture(deployPoolFixture);
+
+    const { rm, assetOracle, referenceOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 27, 9);
+
+    const _A27 = _R;
+    const _A9 = amountFunction(9);
+
+    await addRound(assetOracle, _A27("0.0005")); // 1 Ray = 2000 WMATIC
+    await addRound(referenceOracle, _A9("0.000333")); // 1 Ray = 3000 RTK
+    // Therefore 1 WMATIC = 1.5 RTK
+
+    const start = await blockchainNow(owner);
+
+    const [price0, lossProb0] = await rm.pricePolicy(_A9("1.1"), true, _A(1000), start + 3600);
+    expect(price0).to.equal(0);
+    expect(lossProb0).to.equal(0);
+
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+
+    const priceSlots = await rm.PRICE_SLOTS();
+
+    const cdf = new Array(priceSlots);
+    for (let i = 0; i < priceSlots; i++) cdf[i] = _W(i / 100);
+    cdf[priceSlots - 1] = _W("0.5");
+    await rm.connect(owner).setCDF(1, cdf);
+
+    // With a variation of 0.4% ($1.5 -> 1.494) we have the probability of the first slot
+    let [premium, lossProb] = await rm.pricePolicy(_A9("1.494"), true, _A(1000), start + 3600);
+    expect(lossProb).to.equal(_W(0));
+    expect(premium).to.equal(_W(0));
+
+    // With a variation of 12.3% ($1.5 -> $1.3155) we have the probability of the 12th slot
+    [premium, lossProb] = await rm.pricePolicy(_A9("1.3155"), true, _A(1000), start + 3600);
+    expect(lossProb).to.equal(_W("0.12"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600));
+
+    // With a variation of 26.6% ($1.5 -> $1.1) we have the probability of the 27th slot
+    [premium, lossProb] = await rm.pricePolicy(_A9("1.1"), true, _A(1000), start + 3600);
+    expect(lossProb).to.equal(_W("0.27"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600));
+
+    // With a variation of 46.6% ($1.5 -> $0.8) we have the probability of the last slot
+    [premium, lossProb] = await rm.pricePolicy(_A9("0.8"), true, _A(1000), start + 3600);
+    expect(lossProb).to.equal(_W("0.5"));
+    expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600));
+  });
+
   it("Should trigger the policy only if threshold met", async () => {
     const { pool, premiumsAccount, accessManager, currency } = await helpers.loadFixture(deployPoolFixture);
 
@@ -472,9 +579,9 @@ describe("Test PriceRiskModule contract", function () {
 
   async function deployPoolFixture() {
     const currency = await initCurrency(
-      { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A(10000) },
+      { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A("10000") },
       [lp, cust],
-      [_A(5000), _A(500)]
+      [_A("5000"), _A("500")]
     );
 
     const wmatic = await initCurrency({ name: "Test WETH", symbol: "WETH", decimals: 18, initial_supply: _E("1000") });
@@ -492,8 +599,8 @@ describe("Test PriceRiskModule contract", function () {
 
     const accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
 
-    await currency.connect(lp).approve(pool.address, _A(5000));
-    await pool.connect(lp).deposit(etk.address, _A(5000));
+    await currency.connect(lp).approve(pool.address, _A("5000"));
+    await pool.connect(lp).deposit(etk.address, _A("5000"));
     return {
       pool,
       currency,

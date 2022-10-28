@@ -118,109 +118,12 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     _oracleTolerance = oracleTolerance_;
   }
 
-  function _convert(
-    AggregatorV3Interface from,
-    AggregatorV3Interface to,
-    uint256 amount
-  ) internal view returns (uint256) {
-    return amount.wadMul(_getExchangeRate(from, to));
-  }
-
-  function _getLatestPrice(AggregatorV3Interface oracle) internal view returns (uint256) {
-    (, int256 price, , uint256 updatedAt, ) = oracle.latestRoundData();
-    require(updatedAt > block.timestamp - _oracleTolerance, "Price is older than tolerable");
-
-    return SafeCast.toUint256(price);
-  }
-
-  function _getExchangeRate(AggregatorV3Interface from, AggregatorV3Interface to)
-    public
-    view
-    returns (uint256)
-  {
-    uint256 priceFrom = scalePrice(_getLatestPrice(from), from.decimals(), WAD_DECIMALS);
-    require(priceFrom != 0, "Price from not available");
-
-    uint256 priceTo = scalePrice(_getLatestPrice(to), to.decimals(), WAD_DECIMALS);
-    require(priceTo != 0, "Price to not available");
-
-    return priceFrom.wadDiv(priceTo);
-  }
-
-  function scalePrice(
-    uint256 price,
-    uint8 priceDecimals,
-    uint8 decimals
-  ) internal pure returns (uint256) {
-    if (priceDecimals < decimals) return price * 10**(decimals - priceDecimals);
-    else return price / 10**(priceDecimals - decimals);
-  }
-
-  function _getCurrentPrice() internal view returns (uint256) {
-    return _convert(_assetOracle, _referenceOracle, 10**_assetOracle.decimals());
-  }
-
-  /**
-   * @dev Returns the premium and lossProb of the policy
-   * @param triggerPrice Price of the asset that will trigger the policy (expressed in the reference currency)
-   * @param lower If true -> triggers if the price is lower, If false -> triggers if the price is higher
-   * @param payout Expressed in policyPool.currency()
-   * @param expiration Expiration of the policy
-   * @return premium Premium that needs to be paid
-   * @return lossProb Probability of paying the maximum payout
-   */
-  function pricePolicy(
-    uint256 triggerPrice,
-    bool lower,
-    uint256 payout,
-    uint40 expiration
-  ) public view override returns (uint256 premium, uint256 lossProb) {
-    uint256 currentPrice = _getCurrentPrice();
-    require(
-      (lower && currentPrice > triggerPrice) || (!lower && currentPrice < triggerPrice),
-      "Price already at trigger value"
-    );
-    lossProb = _computeLossProb(currentPrice, triggerPrice, expiration - uint40(block.timestamp));
-    if (lossProb == 0) return (0, 0);
-    premium = getMinimumPremium(payout, lossProb, expiration);
-    return (premium, lossProb);
-  }
-
-  function _computeLossProb(
-    uint256 currentPrice,
-    uint256 triggerPrice,
-    uint40 duration
-  ) internal view returns (uint256) {
-    bool lower = currentPrice > triggerPrice;
-    uint256[PRICE_SLOTS] storage pdf = _cdf[
-      int40((duration + 1800) / 3600) * (lower ? int40(1) : int40(-1))
-    ];
-
-    uint256 decimalConv = 10**(WAD_DECIMALS - _referenceOracle.decimals());
-
-    // Calculate the jump percentage as integer with symmetric rounding
-    uint256 priceJump;
-    if (lower) {
-      priceJump = WadRayMath.WAD - (triggerPrice * decimalConv).wadDiv(currentPrice * decimalConv);
-    } else {
-      priceJump = (triggerPrice * decimalConv).wadDiv(currentPrice * decimalConv) - WadRayMath.WAD;
-    }
-
-    uint8 slot = uint8((priceJump + _slotSize / 2) / _slotSize);
-
-    if (slot >= PRICE_SLOTS) {
-      return pdf[PRICE_SLOTS - 1];
-    } else {
-      return pdf[slot];
-    }
-  }
-
   function newPolicy(
     uint256 triggerPrice,
     bool lower,
     uint256 payout,
     uint40 expiration
-  ) external override returns (uint256) {
+  ) external override whenNotPaused returns (uint256) {
     (uint256 premium, uint256 lossProb) = pricePolicy(triggerPrice, lower, payout, expiration);
     require(premium > 0, "Either duration or percentage jump not supported");
 
@@ -256,6 +159,123 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     );
 
     _policyPool.resolvePolicy(policy.ensuroPolicy, policy.ensuroPolicy.payout);
+  }
+
+  /**
+   * @dev Returns the premium and lossProb of the policy
+   * @param triggerPrice Price of the asset that will trigger the policy (expressed in the reference currency as reported by the oracle)
+   * @param lower If true -> triggers if the price is lower, If false -> triggers if the price is higher
+   * @param payout Expressed in policyPool.currency()
+   * @param expiration Expiration of the policy
+   * @return premium Premium that needs to be paid
+   * @return lossProb Probability of paying the maximum payout
+   */
+  function pricePolicy(
+    uint256 triggerPrice,
+    bool lower,
+    uint256 payout,
+    uint40 expiration
+  ) public view override returns (uint256 premium, uint256 lossProb) {
+    uint256 currentPrice = _getCurrentPrice();
+    require(
+      (lower && currentPrice > triggerPrice) || (!lower && currentPrice < triggerPrice),
+      "Price already at trigger value"
+    );
+    lossProb = _computeLossProb(currentPrice, triggerPrice, expiration - uint40(block.timestamp));
+    if (lossProb == 0) return (0, 0);
+    premium = getMinimumPremium(payout, lossProb, expiration);
+    return (premium, lossProb);
+  }
+
+  function _getCurrentPrice() internal view returns (uint256) {
+    return _convert(_assetOracle, _referenceOracle, 10**_assetOracle.decimals());
+  }
+
+  /**
+   * @dev Converts between two assets given their price aggregators
+   * @param from the aggregator for the origin asset
+   * @param to the aggregator for the destination asset
+   * @param amount the amount to convert, expressed with the same decimals as the from aggregator
+   * @return The converted amount, expressed with the same decimals as the to aggregator
+   */
+  function _convert(
+    AggregatorV3Interface from,
+    AggregatorV3Interface to,
+    uint256 amount
+  ) internal view returns (uint256) {
+    uint256 converted = scalePrice(amount, from.decimals(), WAD_DECIMALS).wadMul(
+      _getExchangeRate(from, to)
+    );
+    return scalePrice(converted, WAD_DECIMALS, to.decimals());
+  }
+
+  /**
+   * @dev Calculates the exchange rate between the prices returned by the two aggregators
+   *      Assumes that both aggregators are returning prices using the same quote.
+   *      Although it's not required that the aggregators return prices with the same number of
+   *      decimals, this is not required. Both prices will be scaled to Wad before calculating the
+   *      rate.
+   * @param base the aggregator for the base
+   * @param quote the aggregator for the quote asset
+   * @return The exchange rate from/to in Wad
+   */
+  function _getExchangeRate(AggregatorV3Interface base, AggregatorV3Interface quote)
+    public
+    view
+    returns (uint256)
+  {
+    uint256 basePrice = scalePrice(_getLatestPrice(base), base.decimals(), WAD_DECIMALS);
+    require(basePrice != 0, "Price from not available");
+
+    uint256 quotePrice = scalePrice(_getLatestPrice(quote), quote.decimals(), WAD_DECIMALS);
+    require(quotePrice != 0, "Price to not available");
+
+    return basePrice.wadDiv(quotePrice);
+  }
+
+  function _getLatestPrice(AggregatorV3Interface oracle) internal view returns (uint256) {
+    (, int256 price, , uint256 updatedAt, ) = oracle.latestRoundData();
+    require(updatedAt > block.timestamp - _oracleTolerance, "Price is older than tolerable");
+
+    return SafeCast.toUint256(price);
+  }
+
+  function scalePrice(
+    uint256 price,
+    uint8 priceDecimals,
+    uint8 decimals
+  ) internal pure returns (uint256) {
+    if (priceDecimals < decimals) return price * 10**(decimals - priceDecimals);
+    else return price / 10**(priceDecimals - decimals);
+  }
+
+  function _computeLossProb(
+    uint256 currentPrice,
+    uint256 triggerPrice,
+    uint40 duration
+  ) internal view returns (uint256) {
+    bool lower = currentPrice > triggerPrice;
+    uint256[PRICE_SLOTS] storage pdf = _cdf[
+      int40((duration + 1800) / 3600) * (lower ? int40(1) : int40(-1))
+    ];
+
+    uint256 decimalConv = 10**(WAD_DECIMALS - _referenceOracle.decimals());
+
+    // Calculate the jump percentage as integer with symmetric rounding
+    uint256 priceJump;
+    if (lower) {
+      priceJump = WadRayMath.WAD - (triggerPrice * decimalConv).wadDiv(currentPrice * decimalConv);
+    } else {
+      priceJump = (triggerPrice * decimalConv).wadDiv(currentPrice * decimalConv) - WadRayMath.WAD;
+    }
+
+    uint8 slot = uint8((priceJump + _slotSize / 2) / _slotSize);
+
+    if (slot >= PRICE_SLOTS) {
+      return pdf[PRICE_SLOTS - 1];
+    } else {
+      return pdf[slot];
+    }
   }
 
   /**
