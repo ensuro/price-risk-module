@@ -3,6 +3,7 @@ const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const ethers = require("ethers");
 const {
+  amountFunction,
   initCurrency,
   deployPool,
   deployPremiumsAccount,
@@ -24,18 +25,6 @@ hre.upgrades.silenceWarnings();
 
 const skipForkTests = process.env.SKIP_FORK_TESTS === "true";
 const forkIt = skipForkTests ? it.skip : it;
-
-function amountFunction(decimals) {
-  // TODO: move this upstream to ensuro utils
-  return function (value) {
-    if (value === undefined) return undefined;
-    if (typeof value === "string" || value instanceof String) {
-      return ethers.utils.parseUnits(value, decimals);
-    } else {
-      return _BN(Math.round(value * 1e6)).mul(_BN(10).pow(decimals - 6));
-    }
-  };
-}
 
 describe("Test PriceRiskModule contract", function () {
   let owner, lp, cust;
@@ -733,7 +722,6 @@ describe("Test PriceRiskModule contract", function () {
     });
 
     const _U = amountFunction(8);
-    const _W = amountFunction(18); // test-utils' _W truncates to 9 decimals :-/
 
     const { pool, premiumsAccount, accessManager, currency } = await deployPoolFixture(); // Can't use loadFixture on fork
 
