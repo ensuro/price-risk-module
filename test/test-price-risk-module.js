@@ -187,6 +187,19 @@ describe("Test PriceRiskModule contract", function () {
     await expect(rm.pricePolicy(_E("2"), true, _A(1000), 3600)).to.be.revertedWith("Price is older than tolerable");
   });
 
+  it("Should not allow address(0) for the asset oracle", async () => {
+    const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
+
+    const PriceRiskModule = await hre.ethers.getContractFactory("PriceRiskModule");
+    const zeroAddress = "0x0000000000000000000000000000000000000000";
+    await expect(
+      addRiskModule(pool, premiumsAccount, PriceRiskModule, {
+        extraConstructorArgs: [zeroAddress, zeroAddress, _W("0.01")],
+        extraArgs: [3600],
+      })
+    ).to.be.revertedWith("PriceRiskModule: assetOracle_ cannot be the zero address");
+  });
+
   it("Should reject if trigger price has already been reached", async () => {
     const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
 
@@ -678,48 +691,6 @@ describe("Test PriceRiskModule contract", function () {
     expect(await rm._getExchangeRate(referenceOracle.address, assetOracle.address)).to.equal(
       _W("0.003410953646224163")
     );
-  });
-
-  it("PriceRiskModule asset address validation", async () => {
-    const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
-      await helpers.loadFixture(deployPoolFixture);
-
-    const zeroAddress = "0x0000000000000000000000000000000000000000";
-    let rm = await expect(
-      addRiskModuleWithParams(pool, undefined, premiumsAccount, undefined, PriceRiskModule, {
-        extraConstructorArgs: [zeroAddress, currency.address, priceOracle.address, _W("0.01")],
-        scrPercentage: "0.5",
-      })
-    ).to.be.revertedWith("PriceRiskModule: asset cannot be the zero address");
-
-    rm = await addRiskModuleWithParams(pool, undefined, premiumsAccount, undefined, PriceRiskModule, {
-      extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
-      scrPercentage: "0.5",
-    });
-
-    expect(await rm.name()).to.equal("RiskModule");
-    expect(await rm.asset()).to.equal(wmatic.address);
-  });
-
-  it("PriceRiskModule currency address validation", async () => {
-    const { pool, currency, priceOracle, PriceRiskModule, premiumsAccount, wmatic, accessManager } =
-      await helpers.loadFixture(deployPoolFixture);
-
-    const zeroAddress = "0x0000000000000000000000000000000000000000";
-    let rm = await expect(
-      addRiskModuleWithParams(pool, undefined, premiumsAccount, undefined, PriceRiskModule, {
-        extraConstructorArgs: [wmatic.address, zeroAddress, priceOracle.address, _W("0.01")],
-        scrPercentage: "0.5",
-      })
-    ).to.be.revertedWith("PriceRiskModule: referenceCurrency cannot be the zero address");
-
-    rm = await addRiskModuleWithParams(pool, undefined, premiumsAccount, undefined, PriceRiskModule, {
-      extraConstructorArgs: [wmatic.address, currency.address, priceOracle.address, _W("0.01")],
-      scrPercentage: "0.5",
-    });
-
-    expect(await rm.name()).to.equal("RiskModule");
-    expect(await rm.referenceCurrency()).to.equal(currency.address);
   });
 
   async function deployPoolFixture() {
