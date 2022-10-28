@@ -133,26 +133,28 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
    * @param lower If true -> triggers if the price is lower, If false -> triggers if the price is higher
    * @param payout Expressed in policyPool.currency()
    * @param expiration The policy expiration timestamp
+   * @param onBehalfOf The address that will own the new policy
    * @return policyId
    */
   function newPolicy(
     uint256 triggerPrice,
     bool lower,
     uint256 payout,
-    uint40 expiration
+    uint40 expiration,
+    address onBehalfOf
   ) external override whenNotPaused returns (uint256) {
+    require(onBehalfOf != address(0), "onBehalfOf cannot be the zero address");
     (uint256 premium, uint256 lossProb) = pricePolicy(triggerPrice, lower, payout, expiration);
     require(premium > 0, "Either duration or percentage jump not supported");
 
     uint256 policyId = (uint256(uint160(address(this))) << 96) + _internalId;
     PolicyData storage priceRiskPolicy = _policies[policyId];
-    address onBehalfOf = _msgSender();
     priceRiskPolicy.ensuroPolicy = _newPolicy(
       payout,
       premium,
       lossProb,
       expiration,
-      onBehalfOf,
+      _msgSender(),
       onBehalfOf,
       _internalId
     );

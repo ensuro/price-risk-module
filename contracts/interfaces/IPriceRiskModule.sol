@@ -31,7 +31,8 @@ interface IPriceRiskModule is IRiskModule {
     uint256 triggerPrice,
     bool lower,
     uint256 payout,
-    uint40 expiration
+    uint40 expiration,
+    address onBehalfOf
   ) external returns (uint256);
 
   function triggerPolicy(uint256 policyId) external;

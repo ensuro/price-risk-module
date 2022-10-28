@@ -613,7 +613,7 @@ describe("Test PriceRiskModule contract", function () {
 
     const start = await blockchainNow(owner);
 
-    await expect(rm.connect(cust).newPolicy(_E("1.2"), true, _A(1000), start + 3600)).to.be.revertedWith(
+    await expect(rm.connect(cust).newPolicy(_E("1.2"), true, _A(1000), start + 3600, cust.address)).to.be.revertedWith(
       "Either duration or percentage jump not supported"
     );
 
@@ -622,7 +622,7 @@ describe("Test PriceRiskModule contract", function () {
 
     await currency.connect(cust).approve(pool.address, premium);
 
-    let tx = await rm.connect(cust).newPolicy(_E("1.1"), true, _A(1000), start + 3600);
+    let tx = await rm.connect(cust).newPolicy(_E("1.1"), true, _A(1000), start + 3600, cust.address);
     let receipt = await tx.wait();
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
     const newPricePolicyEvt = getTransactionEvent(rm.interface, receipt, "NewPricePolicy");
@@ -670,7 +670,7 @@ describe("Test PriceRiskModule contract", function () {
     expect(lossProb).to.be.equal(_W("0.04"));
     await currency.connect(cust).approve(pool.address, premium);
 
-    let tx = await rm.connect(cust).newPolicy(_E("1.7"), false, _A(1000), start + 3600);
+    let tx = await rm.connect(cust).newPolicy(_E("1.7"), false, _A(1000), start + 3600, cust.address);
     let receipt = await tx.wait();
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
     const newPricePolicyEvt = getTransactionEvent(rm.interface, receipt, "NewPricePolicy");
@@ -709,9 +709,9 @@ describe("Test PriceRiskModule contract", function () {
     const cdf = _makeArray(priceSlots, 0);
     await expect(rm.setCDF(1, cdf)).to.be.revertedWith("Pausable: paused");
 
-    await expect(rm.newPolicy(_E("1.1"), true, _A(1000), (await blockchainNow(owner)) + 3600)).to.be.revertedWith(
-      "Pausable: paused"
-    );
+    await expect(
+      rm.newPolicy(_E("1.1"), true, _A(1000), (await blockchainNow(owner)) + 3600, cust.address)
+    ).to.be.revertedWith("Pausable: paused");
     await expect(rm.triggerPolicy(1)).to.be.revertedWith("Pausable: paused");
 
     await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner.address);
