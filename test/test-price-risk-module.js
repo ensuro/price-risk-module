@@ -115,7 +115,7 @@ describe("Test PriceRiskModule contract", function () {
     expect((await rm.getCDF(1))[newCdf.length - 1]).to.equal(_W("0.5"));
   });
 
-  it("Should not allow setting prices for policies with now duration", async () => {
+  it("Should not allow setting prices for policies with no duration", async () => {
     const { pool, premiumsAccount, accessManager } = await helpers.loadFixture(deployPoolFixture);
 
     const { rm } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 18);
@@ -136,12 +136,12 @@ describe("Test PriceRiskModule contract", function () {
 
     // Last round for the asset has no price
     await addRound(assetOracle, _E("0"));
-    await expect(rm.pricePolicy(_A(100), true, _A(1000), 3600)).to.be.revertedWith("Price from not available");
+    await expect(rm.pricePolicy(_E("100"), true, _A(1000), 3600)).to.be.revertedWith("Price from not available");
 
     // Last round for the asset has a price but the reference doesn't
     await addRound(assetOracle, _E("1"));
     await addRound(referenceOracle, _E("0"));
-    await expect(rm.pricePolicy(_A(100), true, _A(1000), 3600)).to.be.revertedWith("Price to not available");
+    await expect(rm.pricePolicy(_E("100"), true, _A(1000), 3600)).to.be.revertedWith("Price to not available");
   });
 
   it("Should not allow new policies if prices are not fresh", async () => {
@@ -158,7 +158,7 @@ describe("Test PriceRiskModule contract", function () {
     // The price for the reference is current
     await addRound(referenceOracle, _E("130"));
 
-    await expect(rm.pricePolicy(_W(2), true, _A(1000), 3600)).to.be.revertedWith("Price is older than tolerable");
+    await expect(rm.pricePolicy(_E("2"), true, _A(1000), 3600)).to.be.revertedWith("Price is older than tolerable");
 
     // The asset price is now current
     await addRound(assetOracle, _E("100"));
@@ -166,7 +166,7 @@ describe("Test PriceRiskModule contract", function () {
     // The reference price is old
     await addRound(referenceOracle, _E("130"), now - tolerance, now - tolerance);
 
-    await expect(rm.pricePolicy(_W(2), true, _A(1000), 3600)).to.be.revertedWith("Price is older than tolerable");
+    await expect(rm.pricePolicy(_E("2"), true, _A(1000), 3600)).to.be.revertedWith("Price is older than tolerable");
   });
 
   it("Should reject if trigger price has already been reached", async () => {
@@ -178,9 +178,9 @@ describe("Test PriceRiskModule contract", function () {
     await addRound(referenceOracle, _E("0.000333333")); // 1 ETH = 3000 USDC
     // Therefore 1 WMATIC = 1.5 USDC
 
-    await expect(rm.pricePolicy(_W(2), true, _A(1000), 3600)).to.be.revertedWith("Price already at trigger value");
+    await expect(rm.pricePolicy(_E("2"), true, _A(1000), 3600)).to.be.revertedWith("Price already at trigger value");
 
-    await expect(rm.pricePolicy(_W(1), false, _A(1000), 3600)).to.be.revertedWith("Price already at trigger value");
+    await expect(rm.pricePolicy(_E("1"), false, _A(1000), 3600)).to.be.revertedWith("Price already at trigger value");
   });
 
   it("Should calculate exchange rate between different assets (Wad vs 6 decimals)", async () => {
@@ -222,7 +222,7 @@ describe("Test PriceRiskModule contract", function () {
 
     const start = await blockchainNow(owner);
 
-    const [price0, lossProb0] = await rm.pricePolicy(_W("1.1"), true, _A(1000), start + 3600);
+    const [price0, lossProb0] = await rm.pricePolicy(_E("1.1"), true, _A(1000), start + 3600);
     expect(price0).to.equal(0);
     expect(lossProb0).to.equal(0);
 
@@ -236,22 +236,22 @@ describe("Test PriceRiskModule contract", function () {
     await rm.connect(owner).setCDF(1, cdf);
 
     // With a variation of 0.4% ($1.5 -> 1.494) we have the probability of the first slot
-    let [premium, lossProb] = await rm.pricePolicy(_W("1.494"), true, _A(1000), start + 3600);
+    let [premium, lossProb] = await rm.pricePolicy(_E("1.494"), true, _A(1000), start + 3600);
     expect(lossProb).to.equal(_W(0));
     expect(premium).to.equal(_W(0));
 
     // With a variation of 12.3% ($1.5 -> $1.3155) we have the probability of the 12th slot
-    [premium, lossProb] = await rm.pricePolicy(_W("1.3155"), true, _A(1000), start + 3600);
+    [premium, lossProb] = await rm.pricePolicy(_E("1.3155"), true, _A(1000), start + 3600);
     expect(lossProb).to.equal(_W("0.12"));
     expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600));
 
     // With a variation of 26.6% ($1.5 -> $1.1) we have the probability of the 27th slot
-    [premium, lossProb] = await rm.pricePolicy(_W("1.1"), true, _A(1000), start + 3600);
+    [premium, lossProb] = await rm.pricePolicy(_E("1.1"), true, _A(1000), start + 3600);
     expect(lossProb).to.equal(_W("0.27"));
     expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600));
 
     // With a variation of 46.6% ($1.5 -> $0.8) we have the probability of the last slot
-    [premium, lossProb] = await rm.pricePolicy(_W("0.8"), true, _A(1000), start + 3600);
+    [premium, lossProb] = await rm.pricePolicy(_E("0.8"), true, _A(1000), start + 3600);
     expect(lossProb).to.equal(_W("0.5"));
     expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, start + 3600));
   });
@@ -285,17 +285,17 @@ describe("Test PriceRiskModule contract", function () {
     const expiration = start + 3600 * 2;
 
     // With a variation of 0.4% ($2000 -> $1992) we have the probability of the first slot
-    let [premium, lossProb] = await rm.pricePolicy(_W(1992), true, _A(1000), expiration);
+    let [premium, lossProb] = await rm.pricePolicy(_E("1992"), true, _A(1000), expiration);
     expect(lossProb).to.equal(_W("0.5"));
     expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, expiration));
 
     // With a variation of 30% we have the probability of the 2nd slot
-    [premium, lossProb] = await rm.pricePolicy(_W(1400), true, _A(1000), expiration);
+    [premium, lossProb] = await rm.pricePolicy(_E("1400"), true, _A(1000), expiration);
     expect(lossProb).to.equal(_W("0.7"));
     expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, expiration));
 
     // With a variation of 100% we have the probability of the 8th slot
-    [premium, lossProb] = await rm.pricePolicy(_W(0), true, _A(1000), expiration);
+    [premium, lossProb] = await rm.pricePolicy(_E("0"), true, _A(1000), expiration);
     expect(lossProb).to.equal(_W("0.001"));
     expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), lossProb, expiration));
   });
@@ -330,22 +330,22 @@ describe("Test PriceRiskModule contract", function () {
     const expiration = start + 3600 * 3;
 
     // With a variation of 0.000444% we have the probability of the first slot
-    let [premium, lossProb] = await rm.pricePolicy(_W(2965), false, _A(2000), expiration);
+    let [premium, lossProb] = await rm.pricePolicy(_E("2965"), false, _A(2000), expiration);
     expect(lossProb).to.equal(_W("0.5"));
     expect(premium).to.equal(await rm.getMinimumPremium(_A(2000), lossProb, expiration));
 
     // With a variation of 27% we have the probability of the 5th slot
-    [premium, lossProb] = await rm.pricePolicy(_W(3763), false, _A(2000), expiration);
+    [premium, lossProb] = await rm.pricePolicy(_E("3763"), false, _A(2000), expiration);
     expect(lossProb).to.equal(_W("0.03"));
     expect(premium).to.equal(await rm.getMinimumPremium(_A(2000), lossProb, expiration));
 
     // With a variation of 100% we have the probability of the 20th slot
-    [premium, lossProb] = await rm.pricePolicy(_W(5928), false, _A(2000), expiration);
+    [premium, lossProb] = await rm.pricePolicy(_E("5928"), false, _A(2000), expiration);
     expect(lossProb).to.equal(_W("0.0001"));
     expect(premium).to.equal(await rm.getMinimumPremium(_A(2000), lossProb, expiration));
 
     // With a variation of 150% we have the probability of the last slot
-    [premium, lossProb] = await rm.pricePolicy(_W(7410), false, _A(2000), expiration);
+    [premium, lossProb] = await rm.pricePolicy(_E("7410"), false, _A(2000), expiration);
     expect(lossProb).to.equal(_W("0.000005"));
     expect(premium).to.equal(await rm.getMinimumPremium(_A(2000), lossProb, expiration));
   });
@@ -371,16 +371,16 @@ describe("Test PriceRiskModule contract", function () {
 
     const start = await blockchainNow(owner);
 
-    await expect(rm.connect(cust).newPolicy(_W("1.2"), true, _A(1000), start + 3600)).to.be.revertedWith(
+    await expect(rm.connect(cust).newPolicy(_E("1.2"), true, _A(1000), start + 3600)).to.be.revertedWith(
       "Either duration or percentage jump not supported"
     );
 
-    const [premium, lossProb] = await rm.pricePolicy(_W("1.1"), true, _A(1000), start + 3600);
+    const [premium, lossProb] = await rm.pricePolicy(_E("1.1"), true, _A(1000), start + 3600);
     expect(lossProb).to.be.equal(_W("0.05"));
 
     await currency.connect(cust).approve(pool.address, premium);
 
-    let tx = await rm.connect(cust).newPolicy(_W("1.1"), true, _A(1000), start + 3600);
+    let tx = await rm.connect(cust).newPolicy(_E("1.1"), true, _A(1000), start + 3600);
     let receipt = await tx.wait();
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
     const newPricePolicyEvt = getTransactionEvent(rm.interface, receipt, "NewPricePolicy");
@@ -424,11 +424,11 @@ describe("Test PriceRiskModule contract", function () {
 
     const start = await blockchainNow(owner);
 
-    const [premium, lossProb] = await rm.pricePolicy(_W("1.7"), false, _A(1000), start + 3600);
+    const [premium, lossProb] = await rm.pricePolicy(_E("1.7"), false, _A(1000), start + 3600);
     expect(lossProb).to.be.equal(_W("0.04"));
     await currency.connect(cust).approve(pool.address, premium);
 
-    let tx = await rm.connect(cust).newPolicy(_W("1.7"), false, _A(1000), start + 3600);
+    let tx = await rm.connect(cust).newPolicy(_E("1.7"), false, _A(1000), start + 3600);
     let receipt = await tx.wait();
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
     const newPricePolicyEvt = getTransactionEvent(rm.interface, receipt, "NewPricePolicy");
