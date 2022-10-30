@@ -89,16 +89,35 @@ describe("Test PriceRiskModule contract", function () {
 
     expect(await rm.oracleTolerance()).to.equal(HOUR);
 
-    await expect(rm.setOracleTolerance(1800)).to.be.revertedWith(
+    await expect(rm.setOracleTolerance(HOUR / 2)).to.be.revertedWith(
       accessControlMessage(owner.address, rm.address, "ORACLE_ADMIN_ROLE")
     );
     expect(await rm.oracleTolerance()).to.equal(HOUR);
 
     await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner.address);
 
-    await expect(rm.setOracleTolerance(1800)).not.to.be.reverted;
+    await expect(rm.setOracleTolerance(HOUR / 2)).not.to.be.reverted;
 
     expect(await rm.oracleTolerance()).to.equal(HOUR / 2);
+  });
+
+  it("Should only allow ORACLE_ADMIN to set the minDuration", async () => {
+    const { pool, premiumsAccount, accessManager } = await helpers.loadFixture(deployPoolFixture);
+
+    const { rm } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 18);
+
+    expect(await rm.minDuration()).to.equal(HOUR);
+
+    await expect(rm.setMinDuration(HOUR / 2)).to.be.revertedWith(
+      accessControlMessage(owner.address, rm.address, "ORACLE_ADMIN_ROLE")
+    );
+    expect(await rm.minDuration()).to.equal(HOUR);
+
+    await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner.address);
+
+    await expect(rm.setMinDuration(HOUR / 2)).not.to.be.reverted;
+
+    expect(await rm.minDuration()).to.equal(HOUR / 2);
   });
 
   it("Should only allow PRICER to set CDFs", async () => {
@@ -190,6 +209,18 @@ describe("Test PriceRiskModule contract", function () {
     ).to.be.revertedWith("PriceRiskModule: assetOracle_ cannot be the zero address");
   });
 
+  it("Should not allow address(0) for the policy owner", async () => {
+    const { pool, premiumsAccount, accessManager } = await helpers.loadFixture(deployPoolFixture);
+
+    const { rm, assetOracle, referenceOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 18);
+
+    await expect(
+      rm
+        .connect(cust)
+        .newPolicy(_E("1.1"), true, _A(1000), await blockchainNow(owner), hre.ethers.constants.AddressZero)
+    ).to.be.revertedWith("onBehalfOf cannot be the zero address");
+  });
+
   it("Should reject if trigger price has already been reached", async () => {
     const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
 
@@ -231,6 +262,20 @@ describe("Test PriceRiskModule contract", function () {
     await addRound(assetOracle, _E("0.0005")); // 1 ETH = 2000 USD
 
     expect(await rm._getExchangeRate(assetOracle.address, hre.ethers.constants.AddressZero)).to.equal(_E("0.0005"));
+  });
+
+  it("Should require at least base for exchange rate calculation", async () => {
+    const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
+
+    const { rm, assetOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18);
+
+    expect(await rm.referenceOracle()).to.equal(hre.ethers.constants.AddressZero);
+
+    await addRound(assetOracle, _E("0.0005")); // 1 ETH = 2000 USD
+
+    await expect(
+      rm._getExchangeRate(hre.ethers.constants.AddressZero, hre.ethers.constants.AddressZero)
+    ).to.be.revertedWith("Base oracle required");
   });
 
   it("Should calculate policy premium and loss for single asset with no reference", async () => {
@@ -302,6 +347,61 @@ describe("Test PriceRiskModule contract", function () {
 
     expect(await rm._getExchangeRate(assetOracle.address, referenceOracle.address)).to.equal(_W("0.0125"));
     expect(await rm._getExchangeRate(referenceOracle.address, assetOracle.address)).to.equal(_W("80"));
+  });
+
+  it("Should not allow policy creation/triggering below min duration", async () => {
+    const { pool, premiumsAccount, accessManager, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { rm, assetOracle, referenceOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 18);
+
+    // Setup pricing
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+    const priceSlots = await rm.PRICE_SLOTS();
+    const cdf = new Array(priceSlots);
+    for (let i = 0; i < priceSlots; i++) cdf[i] = _W(i / 100);
+    cdf[priceSlots - 1] = _W("0.5");
+    await rm.connect(owner).setCDF(2, cdf);
+    await rm.connect(owner).setCDF(3, cdf);
+
+    // Setup min duration
+    await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner.address);
+    await rm.setMinDuration(HOUR * 2);
+
+    // Setup oracle
+    await addRound(assetOracle, _E("0.0005")); // 1 ETH = 2000 WMATIC
+    await addRound(referenceOracle, _E("0.000333333")); // 1 ETH = 3000 USDC
+    // => 1 WMATIC = 1.5 USDC
+
+    const start = await blockchainNow(owner);
+    const triggerPrice = _E("1.1");
+
+    // Duration = 2 hours is rejected
+    await expect(
+      rm.connect(cust).newPolicy(triggerPrice, true, _A(1000), start + HOUR * 2, cust.address)
+    ).to.be.revertedWith("The policy expires too soon");
+
+    // Duration = 3 hours is accepted
+    const expiration = start + HOUR * 3;
+    const [premium, lossProb] = await rm.pricePolicy(triggerPrice, true, _A(1000), expiration);
+    expect(lossProb).to.be.equal(_W("0.27"));
+
+    await currency.connect(cust).approve(pool.address, premium);
+
+    const tx = await rm.connect(cust).newPolicy(triggerPrice, true, _A(1000), expiration, cust.address);
+    const receipt = await tx.wait();
+    const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
+    const policyId = newPolicyEvt.args.policy.id;
+
+    // The policy cannot be triggered within the next two hours, even if triggerPrice is reached
+    await helpers.time.increase(HOUR);
+    await addRound(assetOracle, _E("0.00035")); // 1 ETH = 2857 WMATIC
+    await addRound(referenceOracle, _E("0.000333333")); // 1 ETH = 3000 USDC - Just refreshing price
+    await expect(rm.triggerPolicy(policyId)).to.be.revertedWith("Too soon to trigger the policy");
+
+    // The policy can be triggered after the min duration
+    await helpers.time.increase(HOUR);
+    await addRound(assetOracle, _E("0.00035")); // 1 ETH = 2857 WMATIC - Just refreshing price
+    await addRound(referenceOracle, _E("0.000333333")); // 1 ETH = 3000 USDC - Just refreshing price
+    await expect(() => rm.triggerPolicy(policyId)).to.changeTokenBalance(currency, cust, _A(1000));
   });
 
   it("Should calculate policy premium and loss probability (1% slots)", async () => {
@@ -721,6 +821,8 @@ describe("Test PriceRiskModule contract", function () {
 
     await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner.address);
     await expect(rm.setOracleTolerance(1800)).to.be.revertedWith("Pausable: paused");
+
+    await expect(rm.setMinDuration(1800)).to.be.revertedWith("Pausable: paused");
   });
 
   forkIt("Should work with real chainlink oracles (forking at https://polygonscan.com/block/34906609)", async () => {
