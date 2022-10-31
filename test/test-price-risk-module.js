@@ -307,14 +307,16 @@ describe("Test PriceRiskModule contract", function () {
   it("Should calculate exchange rate between different assets (Wad vs 6 decimals)", async () => {
     const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
 
-    let { rm, assetOracle, referenceOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 6);
+    const { rm, assetOracle, referenceOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 6);
 
     await addRound(assetOracle, _E("0.2"));
     await addRound(referenceOracle, _A(0.5));
 
-    expect(await rm.getCurrentPrice()).to.equal(_W("0.4"));
+    expect(await rm.getCurrentPrice()).to.equal(_A("0.4")); // price expressed in the reference asset
 
-    expect(await rm._getExchangeRate(referenceOracle.address, assetOracle.address)).to.equal(_W("2.5"));
+    const inverseRm = await addPriceRiskModule(pool, premiumsAccount, referenceOracle, assetOracle);
+
+    expect(await inverseRm.getCurrentPrice()).to.equal(_W("2.5"));
   });
 
   it("Should calculate exchange rate between different assets (Ray vs 9 decimals)", async () => {
@@ -328,8 +330,11 @@ describe("Test PriceRiskModule contract", function () {
     await addRound(assetOracle, _A27("0.001"));
     await addRound(referenceOracle, _A9(0.08));
 
-    expect(await rm._getExchangeRate(assetOracle.address, referenceOracle.address)).to.equal(_W("0.0125"));
-    expect(await rm._getExchangeRate(referenceOracle.address, assetOracle.address)).to.equal(_W("80"));
+    expect(await rm.getCurrentPrice()).to.equal(_A9("0.0125"));
+
+    const inverseRm = await addPriceRiskModule(pool, premiumsAccount, referenceOracle, assetOracle);
+
+    expect(await inverseRm.getCurrentPrice()).to.equal(_A27("80"));
   });
 
   it("Should not allow policy creation/triggering below min duration", async () => {
@@ -440,7 +445,7 @@ describe("Test PriceRiskModule contract", function () {
       premiumsAccount,
       18,
       18,
-      null,
+      HOUR,
       _W("0.13")
     );
 
@@ -484,7 +489,7 @@ describe("Test PriceRiskModule contract", function () {
       premiumsAccount,
       18,
       18,
-      null,
+      HOUR,
       _W("0.05")
     );
 
@@ -845,13 +850,11 @@ describe("Test PriceRiskModule contract", function () {
       extraArgs: [HOUR],
     });
 
-    expect(await rm._getExchangeRate(assetOracle.address, referenceOracle.address)).to.equal(
-      _W("293.173142680192710293")
-    );
+    expect(await rm.getCurrentPrice()).to.equal(_U("293.17314268"));
 
-    expect(await rm._getExchangeRate(referenceOracle.address, assetOracle.address)).to.equal(
-      _W("0.003410953646224163")
-    );
+    const inverseRm = await addPriceRiskModule(pool, premiumsAccount, referenceOracle, assetOracle);
+
+    expect(await inverseRm.getCurrentPrice()).to.equal(_U("0.00341095"));
   });
 
   async function deployPoolFixture() {
@@ -899,11 +902,10 @@ async function addRiskModuleWithOracles(
   premiumsAccount,
   assetDecimals,
   referenceDecimals,
-  oracleTolerance,
-  slotSize
+  oracleTolerance = HOUR,
+  slotSize = _W("0.01")
 ) {
   const PriceOracle = await hre.ethers.getContractFactory("AggregatorV3Mock");
-  const PriceRiskModule = await hre.ethers.getContractFactory("PriceRiskModule");
 
   const assetOracle = await PriceOracle.deploy(assetDecimals);
   assetOracle._P = amountFunction(assetDecimals);
@@ -916,12 +918,26 @@ async function addRiskModuleWithOracles(
     referenceOracle = { address: hre.ethers.constants.AddressZero };
   }
 
+  const rm = await addPriceRiskModule(pool, premiumsAccount, assetOracle, referenceOracle, oracleTolerance, slotSize);
+
+  return { PriceOracle, assetOracle, referenceOracle, rm };
+}
+
+async function addPriceRiskModule(
+  pool,
+  premiumsAccount,
+  assetOracle,
+  referenceOracle,
+  oracleTolerance = HOUR,
+  slotSize = _W("0.01")
+) {
+  const PriceRiskModule = await hre.ethers.getContractFactory("PriceRiskModule");
   const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
-    extraConstructorArgs: [assetOracle.address, referenceOracle.address, slotSize || _W("0.01")],
-    extraArgs: [oracleTolerance || HOUR],
+    extraConstructorArgs: [assetOracle.address, referenceOracle.address, slotSize],
+    extraArgs: [oracleTolerance],
   });
 
-  return { PriceOracle, PriceRiskModule, assetOracle, referenceOracle, rm };
+  return rm;
 }
 
 function _makeArray(n, initialValue) {

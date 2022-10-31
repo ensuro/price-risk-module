@@ -131,8 +131,16 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
 
   /**
    * @dev Creates a new policy
-   * @param triggerPrice The price at which the policy should trigger, expressed with the same
-   *                     decimals as reported by the asset oracle
+   *
+   * Requirements:
+   * - The oracle(s) are functional, returning non zero values and updated after (block.timestamp - oracleTolerance())
+   * - The price jump is supported (_cdf[duration][priceJump] != 0)
+   *
+   * @param triggerPrice The price at which the policy should trigger.
+   *                     If referenceOracle() != address(0), the price is expressed in terms of the reference asset,
+   *                     with the same decimals as reported by the reference oracle
+   *                     If referenceOracle() == address(0), the price is expressed in the denomination
+   *                     of assetOracle(), with the same decimals.
    * @param lower If true -> triggers if the price is lower, If false -> triggers if the price is higher
    * @param payout Expressed in policyPool.currency()
    * @param expiration The policy expiration timestamp
@@ -168,6 +176,17 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     return policyId;
   }
 
+  /**
+   * @dev Triggers the payout of the policy (if conditions are met)
+   *
+   * Requirements:
+   * - Policy was created more than `minDuration()` seconds ago
+   * - The oracle(s) are functional, returning non zero values and updated after (block.timestamp - oracleTolerance())
+   * - getCurrentPrice() <= policy.triggerPrice if policy.lower
+   * - getCurrentPrice() >= policy.triggerPrice if not policy.lower
+   *
+   * @param policyId The id of the policy (as returned by `newPolicy(...)`
+   */
   function triggerPolicy(uint256 policyId) external override whenNotPaused {
     PolicyData storage policy = _policies[policyId];
     require(
@@ -189,9 +208,11 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
 
   /**
    * @dev Calculates the premium and lossProb of a policy
-   * @param triggerPrice Price of the asset that will trigger the policy (expressed in the reference currency
-   *                     as reported by the oracle, or the asset denomination as reported by the oracle if no
-   *                     referenceAsset)
+   * @param triggerPrice The price at which the policy should trigger.
+   *                     If referenceOracle() != address(0), the price is expressed in terms of the reference asset,
+   *                     with the same decimals as reported by the reference oracle
+   *                     If referenceOracle() == address(0), the price is expressed in the denomination
+   *                     of assetOracle(), with the same decimals.
    * @param lower If true -> triggers if the price is lower, If false -> triggers if the price is higher
    * @param payout Expressed in policyPool.currency()
    * @param expiration Expiration of the policy
@@ -218,6 +239,17 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     return (premium, lossProb);
   }
 
+  /**
+   * @dev Returns the price of the asset
+   *
+   * Requirements:
+   * - The oracle(s) are functional, returning non zero values and updated after (block.timestamp - oracleTolerance())
+   *
+   * @return If referenceOracle() != address(0), returns the price of the asset expressed in terms of the reference
+   *         asset, with the same decimals as reported by the referenceOracle.decimals
+   *         If referenceOracle() == address(0), returns the price of the asset expressed in the denomination of
+   *         assetOracle(), with the same decimals.
+   */
   function getCurrentPrice() public view returns (uint256) {
     if (address(_referenceOracle) == address(0)) return _getLatestPrice(_assetOracle);
 
@@ -258,7 +290,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
    * @return The exchange rate from/to in Wad
    */
   function _getExchangeRate(AggregatorV3Interface base, AggregatorV3Interface quote)
-    public
+    internal
     view
     returns (uint256)
   {
