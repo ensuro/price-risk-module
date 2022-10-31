@@ -252,27 +252,13 @@ describe("Test PriceRiskModule contract", function () {
   it("Should calculate exchange rate for single asset with no reference", async () => {
     const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
 
-    const { rm, assetOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18);
+    const { rm, assetOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, undefined);
 
     expect(await rm.referenceOracle()).to.equal(hre.ethers.constants.AddressZero);
 
     await addRound(assetOracle, _E("0.0005")); // 1 ETH = 2000 USD
 
-    expect(await rm._getExchangeRate(assetOracle.address, hre.ethers.constants.AddressZero)).to.equal(_E("0.0005"));
-  });
-
-  it("Should require at least base for exchange rate calculation", async () => {
-    const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
-
-    const { rm, assetOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18);
-
-    expect(await rm.referenceOracle()).to.equal(hre.ethers.constants.AddressZero);
-
-    await addRound(assetOracle, _E("0.0005")); // 1 ETH = 2000 USD
-
-    await expect(
-      rm._getExchangeRate(hre.ethers.constants.AddressZero, hre.ethers.constants.AddressZero)
-    ).to.be.revertedWith("Base oracle required");
+    expect(await rm.getCurrentPrice()).to.equal(_E("0.0005"));
   });
 
   it("Should calculate policy premium and loss for single asset with no reference", async () => {
@@ -321,12 +307,12 @@ describe("Test PriceRiskModule contract", function () {
   it("Should calculate exchange rate between different assets (Wad vs 6 decimals)", async () => {
     const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
 
-    const { rm, assetOracle, referenceOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 6);
+    let { rm, assetOracle, referenceOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 6);
 
     await addRound(assetOracle, _E("0.2"));
     await addRound(referenceOracle, _A(0.5));
 
-    expect(await rm._getExchangeRate(assetOracle.address, referenceOracle.address)).to.equal(_W("0.4"));
+    expect(await rm.getCurrentPrice()).to.equal(_W("0.4"));
 
     expect(await rm._getExchangeRate(referenceOracle.address, assetOracle.address)).to.equal(_W("2.5"));
   });

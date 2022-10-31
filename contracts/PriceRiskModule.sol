@@ -27,7 +27,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
 
   uint8 public constant PRICE_SLOTS = 30;
 
-  uint8 public constant WAD_DECIMALS = 18;
+  uint8 internal constant WAD_DECIMALS = 18;
 
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   uint256 internal immutable _slotSize;
@@ -174,7 +174,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
       (block.timestamp - policy.ensuroPolicy.start) >= _state.minDuration,
       "Too soon to trigger the policy"
     );
-    uint256 currentPrice = _getCurrentPrice();
+    uint256 currentPrice = getCurrentPrice();
     require(
       !policy.lower || currentPrice <= policy.triggerPrice,
       "Condition not met CurrentPrice > triggerPrice"
@@ -204,7 +204,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     uint256 payout,
     uint40 expiration
   ) public view override returns (uint256 premium, uint256 lossProb) {
-    uint256 currentPrice = _getCurrentPrice();
+    uint256 currentPrice = getCurrentPrice();
     require(
       (lower && currentPrice > triggerPrice) || (!lower && currentPrice < triggerPrice),
       "Price already at trigger value"
@@ -218,7 +218,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     return (premium, lossProb);
   }
 
-  function _getCurrentPrice() internal view returns (uint256) {
+  function getCurrentPrice() public view returns (uint256) {
     if (address(_referenceOracle) == address(0)) return _getLatestPrice(_assetOracle);
 
     return _convert(_assetOracle, _referenceOracle, 10**_assetOracle.decimals());
@@ -240,10 +240,10 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
       address(from) != address(0) && address(to) != address(0),
       "Both oracles required for conversion"
     );
-    uint256 converted = scalePrice(amount, from.decimals(), WAD_DECIMALS).wadMul(
+    uint256 converted = _scalePrice(amount, from.decimals(), WAD_DECIMALS).wadMul(
       _getExchangeRate(from, to)
     );
-    return scalePrice(converted, WAD_DECIMALS, to.decimals());
+    return _scalePrice(converted, WAD_DECIMALS, to.decimals());
   }
 
   /**
@@ -264,12 +264,12 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
   {
     require(address(base) != address(0), "Base oracle required");
 
-    uint256 basePrice = scalePrice(_getLatestPrice(base), base.decimals(), WAD_DECIMALS);
+    uint256 basePrice = _scalePrice(_getLatestPrice(base), base.decimals(), WAD_DECIMALS);
     require(basePrice != 0, "Price from not available");
 
     if (address(quote) == address(0)) return basePrice;
 
-    uint256 quotePrice = scalePrice(_getLatestPrice(quote), quote.decimals(), WAD_DECIMALS);
+    uint256 quotePrice = _scalePrice(_getLatestPrice(quote), quote.decimals(), WAD_DECIMALS);
     require(quotePrice != 0, "Price to not available");
 
     return basePrice.wadDiv(quotePrice);
@@ -282,7 +282,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     return SafeCast.toUint256(price);
   }
 
-  function scalePrice(
+  function _scalePrice(
     uint256 price,
     uint8 priceDecimals,
     uint8 decimals
@@ -311,14 +311,14 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
       // 1 - trigger/current
       priceJump =
         WadRayMath.WAD -
-        scalePrice(triggerPrice, priceDecimals, WAD_DECIMALS).wadDiv(
-          scalePrice(currentPrice, priceDecimals, WAD_DECIMALS)
+        _scalePrice(triggerPrice, priceDecimals, WAD_DECIMALS).wadDiv(
+          _scalePrice(currentPrice, priceDecimals, WAD_DECIMALS)
         );
     } else {
       // trigger/current - 1
       priceJump =
-        scalePrice(triggerPrice, priceDecimals, WAD_DECIMALS).wadDiv(
-          scalePrice(currentPrice, priceDecimals, WAD_DECIMALS)
+        _scalePrice(triggerPrice, priceDecimals, WAD_DECIMALS).wadDiv(
+          _scalePrice(currentPrice, priceDecimals, WAD_DECIMALS)
         ) -
         WadRayMath.WAD;
     }
