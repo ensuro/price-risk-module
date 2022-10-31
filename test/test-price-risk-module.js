@@ -1,7 +1,6 @@
 const { expect } = require("chai");
 const hre = require("hardhat");
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const ethers = require("ethers");
 const {
   amountFunction,
   initCurrency,
@@ -17,9 +16,7 @@ const {
   _R,
   grantRole,
   blockchainNow,
-  _BN,
 } = require("@ensuro/core/js/test-utils");
-const { addRiskModuleWithParams } = require("./test-helper");
 
 const HOUR = 3600;
 
@@ -36,7 +33,7 @@ describe("Test PriceRiskModule contract", function () {
     [owner, lp, cust] = await hre.ethers.getSigners();
 
     const decimals = 6;
-    _A = amountFunction(6);
+    _A = amountFunction(decimals);
   });
 
   it("Should return the asset oracle", async () => {
@@ -58,7 +55,7 @@ describe("Test PriceRiskModule contract", function () {
   it("Should return the oracle tolerance", async () => {
     const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
 
-    const { rm, assetOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 18);
+    const { rm } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 18);
 
     expect(await rm.oracleTolerance()).to.equal(HOUR);
   });
@@ -210,9 +207,9 @@ describe("Test PriceRiskModule contract", function () {
   });
 
   it("Should not allow address(0) for the policy owner", async () => {
-    const { pool, premiumsAccount, accessManager } = await helpers.loadFixture(deployPoolFixture);
+    const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
 
-    const { rm, assetOracle, referenceOracle } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 18);
+    const { rm } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 18);
 
     await expect(
       rm
@@ -798,7 +795,7 @@ describe("Test PriceRiskModule contract", function () {
   });
 
   it("Should not allow operations when paused", async () => {
-    const { pool, premiumsAccount, accessManager, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { pool, premiumsAccount, accessManager } = await helpers.loadFixture(deployPoolFixture);
 
     const { rm } = await addRiskModuleWithOracles(pool, premiumsAccount, 18, 18);
 
@@ -841,7 +838,7 @@ describe("Test PriceRiskModule contract", function () {
 
     const _U = amountFunction(8);
 
-    const { pool, premiumsAccount, accessManager, currency } = await deployPoolFixture(); // Can't use loadFixture on fork
+    const { pool, premiumsAccount } = await deployPoolFixture(); // Can't use loadFixture on fork
 
     const BNB_ORACLE_ADDRESS = "0x82a6c4AF830caa6c97bb504425f6A66165C2c26e";
     const USDC_ORACLE_ADDRESS = "0xfE4A8cc5b5B2366C1B58Bea3858e81843581b2F7";
