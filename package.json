@@ -1,6 +1,6 @@
 {
   "name": "priceriskmodule",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "description": "Risk Module for the Ensuro Protocol that's triggered based on the change in the price of an asset.",
   "scripts": {
     "prettier": "prettier --write 'contracts/**/*.sol' --write 'test/**/*.js'",
@@ -35,7 +35,7 @@
   },
   "dependencies": {
     "@chainlink/contracts": "^0.5.1",
-    "@ensuro/core": "^2.0.0-beta11",
+    "@ensuro/core": "^2.0.0",
     "@openzeppelin/contracts": "^4.7.3",
     "@openzeppelin/contracts-upgradeable": "^4.7.3"
   },
