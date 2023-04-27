@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IPolicyPool} from "@ensuro/core/contracts/interfaces/IPolicyPool.sol";
 import {IPremiumsAccount} from "@ensuro/core/contracts/interfaces/IPremiumsAccount.sol";
+import {IAccessManager} from "@ensuro/core/contracts/interfaces/IAccessManager.sol";
 import {RiskModule} from "@ensuro/core/contracts/RiskModule.sol";
 import {Policy} from "@ensuro/core/contracts/Policy.sol";
 import {WadRayMath} from "./dependencies/WadRayMath.sol";
 import {IPriceRiskModule} from "./interfaces/IPriceRiskModule.sol";
+import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
 
 /**
  * @title PriceRiskModule
@@ -19,7 +18,6 @@ import {IPriceRiskModule} from "./interfaces/IPriceRiskModule.sol";
  * @author Ensuro
  */
 contract PriceRiskModule is RiskModule, IPriceRiskModule {
-  using SafeERC20 for IERC20Metadata;
   using WadRayMath for uint256;
 
   bytes32 public constant ORACLE_ADMIN_ROLE = keccak256("ORACLE_ADMIN_ROLE");
@@ -27,14 +25,8 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
 
   uint8 public constant PRICE_SLOTS = 30;
 
-  uint8 internal constant WAD_DECIMALS = 18;
-
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   uint256 internal immutable _slotSize;
-  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-  AggregatorV3Interface internal immutable _assetOracle;
-  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-  AggregatorV3Interface internal immutable _referenceOracle;
 
   struct PolicyData {
     Policy.PolicyData ensuroPolicy;
@@ -49,12 +41,12 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
   //   [1] = prob of ([1, infinite%)
   //   ...
   //   [PRICE_SLOTS - 1] = prob of ([PRICE_SLOTS - 1, -infinite%)
-  mapping(int40 => uint256[PRICE_SLOTS]) internal _cdf;
+  mapping(int40 => SlotPricing[PRICE_SLOTS]) internal _cdf;
 
   struct State {
-    uint96 internalId; // internalId used to identify created policies
-    uint40 oracleTolerance; // In seconds, the tolerance for out-of-date oracle price
-    uint40 minDuration; // In seconds, the minimum time that must elapse before a policy can be triggered
+    uint64 internalId; // internalId used to identify created policies
+    uint32 minDuration; // In seconds, the minimum time that must elapse before a policy can be triggered
+    IPriceOracle oracle; // The contract that returns the current price of the asset
   }
 
   State internal _state;
@@ -74,26 +66,15 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
    *      This cannot be validated by the contract, so be careful when constructing.
    *
    * @param policyPool_ The policyPool
-   * @param assetOracle_ Address of the price feed oracle for the asset
-   * @param referenceOracle_ Address of the price feed oracle for the reference currency. If it's
-   *                         the zero address the asset price will be considered directly.
    * @param slotSize_ Size of each percentage slot in the pdf function (in wad)
    */
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(
     IPolicyPool policyPool_,
     IPremiumsAccount premiumsAccount_,
-    AggregatorV3Interface assetOracle_,
-    AggregatorV3Interface referenceOracle_,
     uint256 slotSize_
   ) RiskModule(policyPool_, premiumsAccount_) {
-    require(
-      address(assetOracle_) != address(0),
-      "PriceRiskModule: assetOracle_ cannot be the zero address"
-    );
     _slotSize = slotSize_;
-    _assetOracle = assetOracle_;
-    _referenceOracle = referenceOracle_;
   }
 
   /**
@@ -105,7 +86,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
    * @param maxPayoutPerPolicy_ Maximum payout per policy (in wad)
    * @param exposureLimit_ Max exposure (sum of payouts) to be allocated to this module (in wad)
    * @param wallet_ Address of the RiskModule provider
-   * @param oracleTolerance_ Max acceptable age of price data, in seconds
+   * @param oracle_ The contract that returns the current price of the asset
    */
   function initialize(
     string memory name_,
@@ -115,7 +96,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     uint256 maxPayoutPerPolicy_,
     uint256 exposureLimit_,
     address wallet_,
-    uint40 oracleTolerance_
+    IPriceOracle oracle_
   ) public initializer {
     __RiskModule_init(
       name_,
@@ -126,7 +107,8 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
       exposureLimit_,
       wallet_
     );
-    _state = State({internalId: 1, oracleTolerance: oracleTolerance_, minDuration: 3600});
+    require(address(oracle_) != address(0), "PriceRiskModule: oracle_ cannot be the zero address");
+    _state = State({internalId: 1, oracle: oracle_, minDuration: 3600});
   }
 
   /**
@@ -155,7 +137,12 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     address onBehalfOf
   ) external override whenNotPaused returns (uint256) {
     require(onBehalfOf != address(0), "onBehalfOf cannot be the zero address");
-    (uint256 premium, uint256 lossProb) = pricePolicy(triggerPrice, lower, payout, expiration);
+    (uint256 premium, SlotPricing memory price) = pricePolicy(
+      triggerPrice,
+      lower,
+      payout,
+      expiration
+    );
     require(premium > 0, "Either duration or percentage jump not supported");
 
     uint256 policyId = (uint256(uint160(address(this))) << 96) + _state.internalId;
@@ -163,7 +150,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     priceRiskPolicy.ensuroPolicy = _newPolicy(
       payout,
       premium,
-      lossProb,
+      uint256(price.lossProb),
       expiration,
       _msgSender(),
       onBehalfOf,
@@ -193,7 +180,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
       (block.timestamp - policy.ensuroPolicy.start) >= _state.minDuration,
       "Too soon to trigger the policy"
     );
-    uint256 currentPrice = getCurrentPrice();
+    uint256 currentPrice = oracle().getCurrentPrice();
     require(
       !policy.lower || currentPrice <= policy.triggerPrice,
       "Condition not met CurrentPrice > triggerPrice"
@@ -208,154 +195,58 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
 
   /**
    * @dev Calculates the premium and lossProb of a policy
-   * @param triggerPrice The price at which the policy should trigger.
-   *                     If referenceOracle() != address(0), the price is expressed in terms of the reference asset,
-   *                     with the same decimals as reported by the reference oracle
-   *                     If referenceOracle() == address(0), the price is expressed in the denomination
-   *                     of assetOracle(), with the same decimals.
+   * @param triggerPrice The price at which the policy should trigger, in Wad, with the same reference as
+   *                     oracle().getCurrentPrice()
    * @param lower If true -> triggers if the price is lower, If false -> triggers if the price is higher
    * @param payout Expressed in policyPool.currency()
    * @param expiration Expiration of the policy
    * @return premium Premium that needs to be paid
-   * @return lossProb Probability of paying the maximum payout
+   * @return price SlotPricing struct with the loss probability of paying the maximum payout and collateralization
+   *               levels
    */
   function pricePolicy(
     uint256 triggerPrice,
     bool lower,
     uint256 payout,
     uint40 expiration
-  ) public view override returns (uint256 premium, uint256 lossProb) {
-    uint256 currentPrice = getCurrentPrice();
+  ) public view override returns (uint256 premium, SlotPricing memory price) {
+    uint256 currentPrice = oracle().getCurrentPrice();
     require(
       (lower && currentPrice > triggerPrice) || (!lower && currentPrice < triggerPrice),
       "Price already at trigger value"
     );
     uint40 duration = expiration - uint40(block.timestamp);
     require(duration >= _state.minDuration, "The policy expires too soon");
-    lossProb = _computeLossProb(currentPrice, triggerPrice, duration);
+    price = _computeLossProb(currentPrice, triggerPrice, duration);
 
-    if (lossProb == 0) return (0, 0);
-    premium = getMinimumPremium(payout, lossProb, expiration);
-    return (premium, lossProb);
+    if (price.lossProb == 0) return (0, price);
+    premium = getMinimumPremiumForPricing(payout, price, expiration);
+    return (premium, price);
   }
 
-  /**
-   * @dev Returns the price of the asset
-   *
-   * Requirements:
-   * - The oracle(s) are functional, returning non zero values and updated after (block.timestamp - oracleTolerance())
-   *
-   * @return If referenceOracle() != address(0), returns the price of the asset expressed in terms of the reference
-   *         asset, with the same decimals as reported by the referenceOracle.decimals
-   *         If referenceOracle() == address(0), returns the price of the asset expressed in the denomination of
-   *         assetOracle(), with the same decimals.
-   */
-  function getCurrentPrice() public view returns (uint256) {
-    if (address(_referenceOracle) == address(0)) return _getLatestPrice(_assetOracle);
-
-    return _convert(_assetOracle, _referenceOracle, 10**_assetOracle.decimals());
-  }
-
-  /**
-   * @dev Converts between two assets given their price aggregators
-   * @param from the aggregator for the origin asset
-   * @param to the aggregator for the destination asset
-   * @param amount the amount to convert, expressed with the same decimals as the from aggregator
-   * @return The converted amount, expressed with the same decimals as the to aggregator
-   */
-  function _convert(
-    AggregatorV3Interface from,
-    AggregatorV3Interface to,
-    uint256 amount
-  ) internal view returns (uint256) {
-    require(
-      address(from) != address(0) && address(to) != address(0),
-      "Both oracles required for conversion"
-    );
-    uint256 converted = _scalePrice(amount, from.decimals(), WAD_DECIMALS).wadMul(
-      _getExchangeRate(from, to)
-    );
-    return _scalePrice(converted, WAD_DECIMALS, to.decimals());
-  }
-
-  /**
-   * @dev Calculates the exchange rate between the prices returned by the two aggregators
-   *      Assumes that both aggregators are returning prices using the same quote.
-   *      Although it's usual that the aggregators return prices with the same number of
-   *      decimals, this is not required. Both prices will be scaled to Wad before calculating the
-   *      rate.
-   * @param base the aggregator for the base
-   * @param quote the aggregator for the quote asset. Can be the zero address, in which case the
-   *              base asset price is returned without any calculations performed.
-   * @return The exchange rate from/to in Wad
-   */
-  function _getExchangeRate(AggregatorV3Interface base, AggregatorV3Interface quote)
-    internal
-    view
-    returns (uint256)
-  {
-    require(address(base) != address(0), "Base oracle required");
-
-    uint256 basePrice = _scalePrice(_getLatestPrice(base), base.decimals(), WAD_DECIMALS);
-    require(basePrice != 0, "Price from not available");
-
-    if (address(quote) == address(0)) return basePrice;
-
-    uint256 quotePrice = _scalePrice(_getLatestPrice(quote), quote.decimals(), WAD_DECIMALS);
-    require(quotePrice != 0, "Price to not available");
-
-    return basePrice.wadDiv(quotePrice);
-  }
-
-  function _getLatestPrice(AggregatorV3Interface oracle) internal view returns (uint256) {
-    (, int256 price, , uint256 updatedAt, ) = oracle.latestRoundData();
-    require(updatedAt > block.timestamp - _state.oracleTolerance, "Price is older than tolerable");
-
-    return SafeCast.toUint256(price);
-  }
-
-  function _scalePrice(
-    uint256 price,
-    uint8 priceDecimals,
-    uint8 decimals
-  ) internal pure returns (uint256) {
-    if (priceDecimals < decimals) return price * 10**(decimals - priceDecimals);
-    else return price / 10**(priceDecimals - decimals);
+  function _round(uint256 number, uint256 denominator) internal pure returns (uint256) {
+    return (number + denominator / 2) / denominator;
   }
 
   function _computeLossProb(
     uint256 currentPrice,
     uint256 triggerPrice,
     uint40 duration
-  ) internal view returns (uint256) {
-    bool lower = currentPrice > triggerPrice;
-    uint256[PRICE_SLOTS] storage pdf = _cdf[
-      int40((duration + 1800) / 3600) * (lower ? int40(1) : int40(-1))
-    ];
-
-    uint8 priceDecimals = address(_referenceOracle) == address(0)
-      ? _assetOracle.decimals()
-      : _referenceOracle.decimals();
+  ) internal view returns (SlotPricing memory) {
+    int40 lower = currentPrice > triggerPrice ? int40(1) : int40(-1);
+    SlotPricing[PRICE_SLOTS] storage pdf = _cdf[int40(uint40(_round(duration, 3600))) * lower];
 
     // Calculate the jump percentage as integer with symmetric rounding
-    uint256 priceJump;
-    if (lower) {
+    uint256 priceJump = triggerPrice.wadDiv(currentPrice);
+    if (lower == 1) {
       // 1 - trigger/current
-      priceJump =
-        WadRayMath.WAD -
-        _scalePrice(triggerPrice, priceDecimals, WAD_DECIMALS).wadDiv(
-          _scalePrice(currentPrice, priceDecimals, WAD_DECIMALS)
-        );
+      priceJump = WadRayMath.WAD - priceJump;
     } else {
       // trigger/current - 1
-      priceJump =
-        _scalePrice(triggerPrice, priceDecimals, WAD_DECIMALS).wadDiv(
-          _scalePrice(currentPrice, priceDecimals, WAD_DECIMALS)
-        ) -
-        WadRayMath.WAD;
+      priceJump -= WadRayMath.WAD;
     }
 
-    uint8 slot = uint8((priceJump + _slotSize / 2) / _slotSize);
+    uint8 slot = uint8(_round(priceJump, _slotSize));
 
     if (slot >= PRICE_SLOTS) {
       return pdf[PRICE_SLOTS - 1];
@@ -370,25 +261,26 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
    *                 negative if probability of higher price
    * @param cdf Array where cdf[i] = prob of price lower/higher than i% of current price
    */
-  function setCDF(int40 duration, uint256[PRICE_SLOTS] calldata cdf)
+  function setCDF(int40 duration, SlotPricing[PRICE_SLOTS] calldata cdf)
     external
     onlyComponentRole(PRICER_ROLE)
     whenNotPaused
   {
     require(duration != 0, "|duration| < 1");
-    _cdf[duration] = cdf;
-  }
-
-  /**
-   * @dev Sets the tolerance for price age
-   * @param oracleTolerance_ The new tolerance in seconds.
-   */
-  function setOracleTolerance(uint40 oracleTolerance_)
-    external
-    onlyComponentRole(ORACLE_ADMIN_ROLE)
-    whenNotPaused
-  {
-    _state.oracleTolerance = oracleTolerance_;
+    for (uint256 i = 0; i < PRICE_SLOTS; i++) {
+      require(
+        cdf[i].lossProb == 0 ||
+          (cdf[i].jrCollRatio <= WadRayMath.WAD &&
+            cdf[i].collRatio <= WadRayMath.WAD &&
+            cdf[i].jrCollRatio <= cdf[i].collRatio),
+        "Validation: invalid collateralization ratios"
+      );
+      _cdf[duration][i] = cdf[i];
+    }
+    uint256 durationParam = duration < 0
+      ? uint256(type(uint40).max + uint256(uint40(-duration)))
+      : uint256(uint40(duration));
+    _parameterChanged(IAccessManager.GovernanceActions.rmFiller1, durationParam, false);
   }
 
   /**
@@ -400,27 +292,52 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     onlyComponentRole(ORACLE_ADMIN_ROLE)
     whenNotPaused
   {
-    _state.minDuration = minDuration_;
+    _state.minDuration = uint32(minDuration_);
+    _parameterChanged(IAccessManager.GovernanceActions.rmFiller2, uint256(minDuration_), false);
   }
 
-  function getCDF(int40 duration) external view returns (uint256[PRICE_SLOTS] memory) {
-    return _cdf[duration];
+  /**
+   * @dev Changes the price oracle
+   * @param oracle_ The new price oracle to use.
+   */
+  function setOracle(IPriceOracle oracle_)
+    external
+    onlyComponentRole(ORACLE_ADMIN_ROLE)
+    whenNotPaused
+  {
+    require(address(oracle_) != address(0), "PriceRiskModule: oracle_ cannot be the zero address");
+    _state.oracle = oracle_;
+    _parameterChanged(
+      IAccessManager.GovernanceActions.rmFiller3,
+      uint256(uint160(address(oracle_))),
+      false
+    );
   }
 
-  function referenceOracle() external view override returns (AggregatorV3Interface) {
-    return _referenceOracle;
+  function getCDF(int40 duration) external view returns (SlotPricing[PRICE_SLOTS] memory ret) {
+    for (uint256 i = 0; i < PRICE_SLOTS; i++) {
+      ret[i] = _cdf[duration][i];
+    }
+    return ret;
   }
 
-  function assetOracle() external view override returns (AggregatorV3Interface) {
-    return _assetOracle;
-  }
-
-  function oracleTolerance() external view override returns (uint40) {
-    return _state.oracleTolerance;
+  function oracle() public view override returns (IPriceOracle) {
+    return _state.oracle;
   }
 
   function minDuration() external view override returns (uint40) {
     return _state.minDuration;
+  }
+
+  function getMinimumPremiumForPricing(
+    uint256 payout,
+    SlotPricing memory pricing,
+    uint40 expiration
+  ) public view returns (uint256) {
+    Params memory p = params();
+    p.jrCollRatio = uint256(pricing.jrCollRatio);
+    p.collRatio = uint256(pricing.collRatio);
+    return _getMinimumPremium(payout, pricing.lossProb, expiration, p);
   }
 
   /**
