@@ -13,8 +13,9 @@ import {WadRayMath} from "./dependencies/WadRayMath.sol";
 import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
 
 /**
- * @title PriceRiskModule
- * @dev Risk Module that triggers the payout if the price of an asset is lower or higher than trigger price
+ * @title ChainlinkPriceOracle
+ * @dev Implementation of IPriceOracle using two underlying chainlink oracles. One with the price of the asset and
+ *      other (referenceOracle - optional) with the price of the asset you want to denominate the asset price.
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
