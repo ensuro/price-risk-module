@@ -314,6 +314,60 @@ describe("Test PriceRiskModule contract", function () {
     await expect(() => rm.triggerPolicy(policyId)).to.changeTokenBalance(currency, cust, _A(1000));
   });
 
+  it("Should allow policy creation of multiple policies with increasing internalId", async () => {
+    const { pool, premiumsAccount, accessManager, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { rm, oracle } = await addRiskModuleWithOracles(pool, premiumsAccount);
+
+    // Setup pricing
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+    const priceSlots = await rm.PRICE_SLOTS();
+    const cdf = new Array(priceSlots);
+    for (let i = 0; i < priceSlots; i++) cdf[i] = [_W(i / 100), _W((i * 2) / 100), _W((i * 3) / 100)];
+    await rm.connect(owner).setCDF(3, cdf);
+    await rm.connect(owner).setCDF(-3, cdf);
+
+    await oracle.setPrice(_E("1.5"));
+
+    const start = await helpers.time.latest();
+    const lowTriggerPrice = _E("1.1"); // slot = 27
+    const highTriggerPrice = _E("1.8"); // slot = 20
+    const expiration = start + HOUR * 3;
+
+    const [premium, lowPricing] = await rm.pricePolicy(lowTriggerPrice, true, _A(1000), expiration);
+    expect(lowPricing.lossProb).to.be.equal(_W("0.27"));
+    expect(lowPricing.jrCollRatio).to.be.equal(_W("0.54"));
+    expect(lowPricing.collRatio).to.be.equal(_W("0.81"));
+
+    await currency.connect(cust).approve(pool.address, premium);
+
+    const tx = await rm.connect(cust).newPolicy(lowTriggerPrice, true, _A(1000), expiration, cust.address);
+    const receipt = await tx.wait();
+    const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
+    const policyId = newPolicyEvt.args.policy.id;
+    expect(policyId.mask(96)).to.be.equal(1);
+    expect(policyId).to.be.equal(ethers.BigNumber.from(2).pow(96).mul(ethers.BigNumber.from(rm.address)).add(1));
+    await expect(tx).to.emit(rm, "NewPricePolicy").withArgs(cust.address, policyId, lowTriggerPrice, true);
+
+    const [hPremium, highPricing] = await rm.pricePolicy(highTriggerPrice, false, _A(100), expiration);
+    expect(highPricing.lossProb).to.be.equal(_W("0.20"));
+    expect(highPricing.jrCollRatio).to.be.equal(_W("0.40"));
+    expect(highPricing.collRatio).to.be.equal(_W("0.60"));
+    expect(hPremium).to.be.equal(_A("20.000685"));
+
+    await currency.connect(cust).approve(pool.address, hPremium);
+    const policyId2 = ethers.BigNumber.from(2).pow(96).mul(ethers.BigNumber.from(rm.address)).add(2);
+    await expect(rm.connect(cust).newPolicy(highTriggerPrice, false, _A(100), expiration, cust.address))
+      .to.emit(rm, "NewPricePolicy")
+      .withArgs(cust.address, policyId2, highTriggerPrice, false);
+
+    await helpers.time.increase(HOUR);
+    await oracle.setPrice(_E("1.09"));
+    await expect(() => rm.triggerPolicy(policyId)).to.changeTokenBalance(currency, cust, _A(1000));
+
+    await oracle.setPrice(_E("1.80"));
+    await expect(() => rm.triggerPolicy(policyId2)).to.changeTokenBalance(currency, cust, _A(100));
+  });
+
   it("Should calculate policy premium and loss probability (1% slots)", async () => {
     const { pool, premiumsAccount, accessManager } = await helpers.loadFixture(deployPoolFixture);
 
@@ -569,7 +623,7 @@ describe("Test PriceRiskModule contract", function () {
     const currency = await initCurrency(
       { name: "Test USDC", symbol: "USDC", decimals: 6, initial_supply: _A("10000") },
       [lp, cust],
-      [_A("5000"), _A("500")]
+      [_A("8000"), _A("500")]
     );
 
     const wmatic = await initCurrency({ name: "Test WETH", symbol: "WETH", decimals: 18, initial_supply: _E("1000") });
@@ -581,19 +635,25 @@ describe("Test PriceRiskModule contract", function () {
     });
     pool._A = _A;
 
-    const etk = await addEToken(pool, {});
+    const srEtk = await addEToken(pool, {});
+    const jrEtk = await addEToken(pool, {});
 
-    const premiumsAccount = await deployPremiumsAccount(hre, pool, { srEtkAddr: etk.address });
+    const premiumsAccount = await deployPremiumsAccount(hre, pool, {
+      srEtkAddr: srEtk.address,
+      jrEtkAddr: jrEtk.address,
+    });
 
     const accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
 
-    await currency.connect(lp).approve(pool.address, _A("5000"));
-    await pool.connect(lp).deposit(etk.address, _A("5000"));
+    await currency.connect(lp).approve(pool.address, _A("8000"));
+    await pool.connect(lp).deposit(srEtk.address, _A("5000"));
+    await pool.connect(lp).deposit(jrEtk.address, _A("3000"));
     return {
       pool,
       currency,
       accessManager,
-      etk,
+      jrEtk,
+      srEtk,
       premiumsAccount,
       wmatic,
     };

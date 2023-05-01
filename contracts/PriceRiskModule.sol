@@ -137,7 +137,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     address onBehalfOf
   ) external override whenNotPaused returns (uint256) {
     require(onBehalfOf != address(0), "onBehalfOf cannot be the zero address");
-    (uint256 premium, SlotPricing memory price) = pricePolicy(
+    (uint256 premium, SlotPricing memory pricing) = pricePolicy(
       triggerPrice,
       lower,
       payout,
@@ -147,14 +147,18 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
 
     uint256 policyId = (uint256(uint160(address(this))) << 96) + _state.internalId;
     PolicyData storage priceRiskPolicy = _policies[policyId];
-    priceRiskPolicy.ensuroPolicy = _newPolicy(
+    Params memory params_ = params();
+    params_.jrCollRatio = uint256(pricing.jrCollRatio);
+    params_.collRatio = uint256(pricing.collRatio);
+    priceRiskPolicy.ensuroPolicy = _newPolicyWithParams(
       payout,
       premium,
-      uint256(price.lossProb),
+      uint256(pricing.lossProb),
       expiration,
       _msgSender(),
       onBehalfOf,
-      _state.internalId
+      _state.internalId,
+      params_
     );
     _state.internalId += 1;
     priceRiskPolicy.triggerPrice = triggerPrice;
