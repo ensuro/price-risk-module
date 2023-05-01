@@ -1,0 +1,34 @@
+{
+  "name": "@ensuro/price-risk-module",
+  "description": "Price Risk Module for the Ensuro Protocol",
+  "version": "%%VERSION%%",
+  "files": [
+    "**/*.sol",
+    "/build/contracts/*.json",
+    "/build/interfaces/*.json",
+    "/js/*.js",
+    "/scripts/*.sh",
+    "/scripts/*.js"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:ensuro/price-risk-module.git"
+  },
+  "keywords": [
+    "solidity",
+    "ethereum",
+    "smart",
+    "contracts",
+    "decentralized",
+    "insurance",
+    "ensuro",
+    "oracles",
+    "chainlink"
+  ],
+  "author": "Ensuro <guillermo@ensuro.co>",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/ensuro/price-risk-module/issues"
+  },
+  "homepage": "https://github.com/ensuro/price-risk-module#readme"
+}
