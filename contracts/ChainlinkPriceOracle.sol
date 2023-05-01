@@ -73,27 +73,8 @@ contract ChainlinkPriceOracle is IPriceOracle {
     if (address(_referenceOracle) == address(0)) {
       return _scalePrice(_getLatestPrice(_assetOracle), _assetOracle.decimals(), WAD_DECIMALS);
     } else {
-      return _convert(_assetOracle, _referenceOracle, 10**_assetOracle.decimals());
+      return _getExchangeRate(_assetOracle, _referenceOracle);
     }
-  }
-
-  /**
-   * @dev Converts between two assets given their price aggregators
-   * @param from the aggregator for the origin asset
-   * @param to the aggregator for the destination asset
-   * @param amount the amount to convert, expressed with the same decimals as the from aggregator
-   * @return The converted amount, expressed with the same decimals as the to aggregator
-   */
-  function _convert(
-    AggregatorV3Interface from,
-    AggregatorV3Interface to,
-    uint256 amount
-  ) internal view returns (uint256) {
-    require(
-      address(from) != address(0) && address(to) != address(0),
-      "Both oracles required for conversion"
-    );
-    return _scalePrice(amount, from.decimals(), WAD_DECIMALS).wadMul(_getExchangeRate(from, to));
   }
 
   /**
@@ -103,8 +84,7 @@ contract ChainlinkPriceOracle is IPriceOracle {
    *      decimals, this is not required. Both prices will be scaled to Wad before calculating the
    *      rate.
    * @param base the aggregator for the base
-   * @param quote the aggregator for the quote asset. Can be the zero address, in which case the
-   *              base asset price is returned without any calculations performed.
+   * @param quote the aggregator for the quote asset.
    * @return The exchange rate from/to in Wad
    */
   function _getExchangeRate(AggregatorV3Interface base, AggregatorV3Interface quote)
@@ -112,12 +92,8 @@ contract ChainlinkPriceOracle is IPriceOracle {
     view
     returns (uint256)
   {
-    require(address(base) != address(0), "Base oracle required");
-
     uint256 basePrice = _scalePrice(_getLatestPrice(base), base.decimals(), WAD_DECIMALS);
     require(basePrice != 0, "Price from not available");
-
-    if (address(quote) == address(0)) return basePrice;
 
     uint256 quotePrice = _scalePrice(_getLatestPrice(quote), quote.decimals(), WAD_DECIMALS);
     require(quotePrice != 0, "Price to not available");

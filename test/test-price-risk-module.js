@@ -354,6 +354,8 @@ describe("Test PriceRiskModule contract", function () {
     // With a variation of 46.6% ($1.5 -> $0.8) we have the probability of the last slot
     [premium, pricing] = await rm.pricePolicy(_E("0.8"), true, _A(1000), start + HOUR * 2);
     expect(pricing.lossProb).to.equal(_W("0.5"));
+    expect(pricing.jrCollRatio).to.equal(_W("0"));
+    expect(pricing.collRatio).to.equal(_W("1"));
     expect(premium).to.equal(await rm.getMinimumPremium(_A(1000), pricing.lossProb, start + HOUR * 2));
   });
 

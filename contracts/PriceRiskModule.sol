@@ -233,12 +233,12 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     uint256 triggerPrice,
     uint40 duration
   ) internal view returns (SlotPricing memory) {
-    int40 lower = currentPrice > triggerPrice ? int40(1) : int40(-1);
-    SlotPricing[PRICE_SLOTS] storage pdf = _cdf[int40(uint40(_round(duration, 3600))) * lower];
+    int40 sign = currentPrice > triggerPrice ? int40(1) : int40(-1);
+    SlotPricing[PRICE_SLOTS] storage pdf = _cdf[int40(uint40(_round(duration, 3600))) * sign];
 
     // Calculate the jump percentage as integer with symmetric rounding
     uint256 priceJump = triggerPrice.wadDiv(currentPrice);
-    if (lower == 1) {
+    if (sign == 1) {
       // 1 - trigger/current
       priceJump = WadRayMath.WAD - priceJump;
     } else {
@@ -277,6 +277,9 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
       );
       _cdf[duration][i] = cdf[i];
     }
+    // Encodes the duration as uint256 in this way:
+    // If positive, it stays as it is (1 --> 1)
+    // If negative, adds type(uint40).max to the absolute number (-1 --> type(uint40).max + 1)
     uint256 durationParam = duration < 0
       ? uint256(type(uint40).max + uint256(uint40(-duration)))
       : uint256(uint40(duration));
