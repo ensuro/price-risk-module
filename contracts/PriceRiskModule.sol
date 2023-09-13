@@ -195,6 +195,10 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     );
 
     _policyPool.resolvePolicy(policy.ensuroPolicy, policy.ensuroPolicy.payout);
+    // Be aware that `_policies` is not deleted when a policy is resolved, so getPolicyData will keep returning
+    // the policy information, despite the policy is no longer claimable. To check if the policy is active, you should
+    // call PolicyPool.getPolicyHash(policyId) and if the output is bytes32(0), that means the policy is no longer
+    // active.
   }
 
   /**
@@ -345,6 +349,10 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     p.jrCollRatio = uint256(pricing.jrCollRatio);
     p.collRatio = uint256(pricing.collRatio);
     return _getMinimumPremium(payout, pricing.lossProb, expiration, p);
+  }
+
+  function getPolicyData(uint256 policyId) external view returns (PolicyData memory) {
+    return _policies[policyId];
   }
 
   /**

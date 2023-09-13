@@ -29,7 +29,7 @@ contract ChainlinkPriceOracle is IPriceOracle {
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   AggregatorV3Interface internal immutable _referenceOracle;
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-  uint256 internal _oracleTolerance;
+  uint256 internal immutable _oracleTolerance;
 
   /**
    * @dev Constructs the PriceRiskModule.
