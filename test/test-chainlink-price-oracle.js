@@ -1,22 +1,13 @@
 const { expect } = require("chai");
 const hre = require("hardhat");
+const { ethers } = hre;
+const { AddressZero } = ethers.constants;
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const {
-  amountFunction,
-  initCurrency,
-  deployPool,
-  deployPremiumsAccount,
   _E,
   _W,
-  addRiskModule,
-  grantComponentRole,
-  addEToken,
-  getTransactionEvent,
-  accessControlMessage,
-  _R,
-  grantRole,
-  blockchainNow,
-} = require("@ensuro/core/js/test-utils");
+  amountFunction,
+} = require("@ensuro/core/js/utils");
 
 const HOUR = 3600;
 
@@ -26,15 +17,13 @@ const skipForkTests = process.env.SKIP_FORK_TESTS === "true";
 const forkIt = skipForkTests ? it.skip : it;
 
 describe("Test PriceRiskModule contract", function () {
-  let owner, lp, cust;
   const _A = amountFunction(6);
   const _A8 = amountFunction(8);
   const _A20 = amountFunction(20);
   let ChainlinkPriceOracle;
 
   beforeEach(async () => {
-    [owner, lp, cust] = await hre.ethers.getSigners();
-    ChainlinkPriceOracle = await hre.ethers.getContractFactory("ChainlinkPriceOracle");
+    ChainlinkPriceOracle = await ethers.getContractFactory("ChainlinkPriceOracle");
   });
 
   async function addRound(oracle, price, startedAt, updatedAt, answeredInRound) {
@@ -43,7 +32,7 @@ describe("Test PriceRiskModule contract", function () {
   }
 
   async function deployAggMock(decimals = 8) {
-    const AggregatorV3Mock = await hre.ethers.getContractFactory("AggregatorV3Mock");
+    const AggregatorV3Mock = await ethers.getContractFactory("AggregatorV3Mock");
     const aggContract = AggregatorV3Mock.deploy(decimals);
     return aggContract;
   }
@@ -60,12 +49,12 @@ describe("Test PriceRiskModule contract", function () {
   it("Should revert if assetOracle=0 but accept referenceOracle=0", async () => {
     const asset = await deployAggMock(8);
     await expect(
-      ChainlinkPriceOracle.deploy(ethers.constants.AddressZero, ethers.constants.AddressZero, 3600)
+      ChainlinkPriceOracle.deploy(AddressZero, AddressZero, 3600)
     ).to.be.revertedWith("PriceRiskModule: assetOracle_ cannot be the zero address");
 
-    const oracle = await ChainlinkPriceOracle.deploy(asset.address, ethers.constants.AddressZero, 3600);
+    const oracle = await ChainlinkPriceOracle.deploy(asset.address, AddressZero, 3600);
     expect(await oracle.assetOracle()).to.be.equal(asset.address);
-    expect(await oracle.referenceOracle()).to.be.equal(ethers.constants.AddressZero);
+    expect(await oracle.referenceOracle()).to.be.equal(AddressZero);
     expect(await oracle.oracleTolerance()).to.be.equal(3600);
   });
 
@@ -96,7 +85,7 @@ describe("Test PriceRiskModule contract", function () {
 
   it("If not reference, returns just the asset price", async () => {
     const asset = await deployAggMock(8);
-    const oracle = await ChainlinkPriceOracle.deploy(asset.address, ethers.constants.AddressZero, 3600);
+    const oracle = await ChainlinkPriceOracle.deploy(asset.address, AddressZero, 3600);
 
     await addRound(asset, _A8("34.2"));
     expect(await oracle.getCurrentPrice()).to.be.equal(_W("34.2"));
@@ -133,7 +122,7 @@ describe("Test PriceRiskModule contract", function () {
     // Asset = 20 decimals / Reference = null
     asset = await deployAggMock(20);
     reference = await deployAggMock(20);
-    oracle = await ChainlinkPriceOracle.deploy(asset.address, ethers.constants.AddressZero, 3600);
+    oracle = await ChainlinkPriceOracle.deploy(asset.address, AddressZero, 3600);
     await addRound(asset, _A20("8"));
     expect(await oracle.getCurrentPrice()).to.be.equal(_W("8"));
   });
@@ -157,8 +146,8 @@ describe("Test PriceRiskModule contract", function () {
     const BNB_ORACLE_ADDRESS = "0x82a6c4AF830caa6c97bb504425f6A66165C2c26e";
     const USDC_ORACLE_ADDRESS = "0xfE4A8cc5b5B2366C1B58Bea3858e81843581b2F7";
 
-    const assetOracle = await hre.ethers.getContractAt("AggregatorV3Interface", BNB_ORACLE_ADDRESS);
-    const referenceOracle = await hre.ethers.getContractAt("AggregatorV3Interface", USDC_ORACLE_ADDRESS);
+    const assetOracle = await ethers.getContractAt("AggregatorV3Interface", BNB_ORACLE_ADDRESS);
+    const referenceOracle = await ethers.getContractAt("AggregatorV3Interface", USDC_ORACLE_ADDRESS);
 
     // Sanity check: are we in the right chain with the right block?
     const [, assetPrice] = await assetOracle.latestRoundData();

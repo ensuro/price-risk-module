@@ -1,36 +1,35 @@
 const { expect } = require("chai");
 const hre = require("hardhat");
+const { ethers } = hre;
+const { AddressZero } = ethers.constants;
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const {
+  _W,
+  _E,
   amountFunction,
+  getTransactionEvent,
+  accessControlMessage,
+  grantRole,
+  grantComponentRole,
+} = require("@ensuro/core/js/utils");
+const {
   initCurrency,
   deployPool,
   deployPremiumsAccount,
-  _E,
-  _W,
   addRiskModule,
-  grantComponentRole,
   addEToken,
-  getTransactionEvent,
-  accessControlMessage,
-  _R,
-  grantRole,
-  blockchainNow,
 } = require("@ensuro/core/js/test-utils");
 
 const HOUR = 3600;
 
 hre.upgrades.silenceWarnings();
 
-const skipForkTests = process.env.SKIP_FORK_TESTS === "true";
-const forkIt = skipForkTests ? it.skip : it;
-
 describe("Test PriceRiskModule contract", function () {
-  let owner, lp, cust;
+  let cust, lp, owner;
   let _A;
 
   beforeEach(async () => {
-    [owner, lp, cust] = await hre.ethers.getSigners();
+    [owner, lp, cust] = await ethers.getSigners();
 
     const decimals = 6;
     _A = amountFunction(decimals);
@@ -55,7 +54,7 @@ describe("Test PriceRiskModule contract", function () {
   it("Should revert if oracle = address(0)", async () => {
     const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
 
-    const oracle = { address: ethers.constants.AddressZero };
+    const oracle = { address: AddressZero };
 
     await expect(addPriceRiskModule(pool, premiumsAccount, oracle)).to.be.revertedWith(
       "PriceRiskModule: oracle_ cannot be the zero address"
@@ -88,7 +87,7 @@ describe("Test PriceRiskModule contract", function () {
 
     expect(await rm.oracle()).to.equal(oracle.address);
 
-    const PriceOracleMock = await hre.ethers.getContractFactory("PriceOracleMock");
+    const PriceOracleMock = await ethers.getContractFactory("PriceOracleMock");
     const newOracle = await PriceOracleMock.deploy(_W(2));
 
     await expect(rm.setOracle(newOracle.address)).to.be.revertedWith(
@@ -97,7 +96,7 @@ describe("Test PriceRiskModule contract", function () {
 
     await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner.address);
 
-    await expect(rm.setOracle(ethers.constants.AddressZero)).to.be.revertedWith(
+    await expect(rm.setOracle(AddressZero)).to.be.revertedWith(
       "PriceRiskModule: oracle_ cannot be the zero address"
     );
 
@@ -197,7 +196,7 @@ describe("Test PriceRiskModule contract", function () {
     await expect(
       rm
         .connect(cust)
-        .newPolicy(_E("1.1"), true, _A(1000), await helpers.time.latest(), hre.ethers.constants.AddressZero)
+        .newPolicy(_E("1.1"), true, _A(1000), await helpers.time.latest(), AddressZero)
     ).to.be.revertedWith("onBehalfOf cannot be the zero address");
   });
 
@@ -523,7 +522,7 @@ describe("Test PriceRiskModule contract", function () {
     const newPricePolicyEvt = getTransactionEvent(rm.interface, receipt, "NewPricePolicy");
 
     const policyId = newPolicyEvt.args.policy.id;
-    expect(policyId).to.equal(rm.address + "000000000000000000000001");
+    expect(policyId).to.equal(`${rm.address}000000000000000000000001`);
 
     expect(newPolicyEvt.args.policy.premium).to.closeTo(premium, _A(0.0001));
     expect(newPolicyEvt.args.policy.payout).to.equal(_A(1000));
@@ -571,7 +570,7 @@ describe("Test PriceRiskModule contract", function () {
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
     const newPricePolicyEvt = getTransactionEvent(rm.interface, receipt, "NewPricePolicy");
     const policyId = newPolicyEvt.args.policy.id;
-    expect(policyId).to.equal(rm.address + "000000000000000000000001");
+    expect(policyId).to.equal(`${rm.address}000000000000000000000001`);
     expect(newPolicyEvt.args.policy.premium).to.closeTo(premium, _A(0.0001));
     expect(newPolicyEvt.args.policy.payout).to.equal(_A(1000));
     expect(newPolicyEvt.args.policy.lossProb).to.equal(_W("0.04"));
@@ -614,7 +613,7 @@ describe("Test PriceRiskModule contract", function () {
     await expect(rm.triggerPolicy(1)).to.be.revertedWith("Pausable: paused");
 
     await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner.address);
-    await expect(rm.setOracle(ethers.constants.AddressZero)).to.be.revertedWith("Pausable: paused");
+    await expect(rm.setOracle(AddressZero)).to.be.revertedWith("Pausable: paused");
 
     await expect(rm.setMinDuration(1800)).to.be.revertedWith("Pausable: paused");
   });
@@ -628,7 +627,7 @@ describe("Test PriceRiskModule contract", function () {
 
     const wmatic = await initCurrency({ name: "Test WETH", symbol: "WETH", decimals: 18, initial_supply: _E("1000") });
 
-    const pool = await deployPool(hre, {
+    const pool = await deployPool({
       currency: currency.address,
       grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
       treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1", // Random address
@@ -638,12 +637,12 @@ describe("Test PriceRiskModule contract", function () {
     const srEtk = await addEToken(pool, {});
     const jrEtk = await addEToken(pool, {});
 
-    const premiumsAccount = await deployPremiumsAccount(hre, pool, {
+    const premiumsAccount = await deployPremiumsAccount(pool, {
       srEtkAddr: srEtk.address,
       jrEtkAddr: jrEtk.address,
     });
 
-    const accessManager = await hre.ethers.getContractAt("AccessManager", await pool.access());
+    const accessManager = await ethers.getContractAt("AccessManager", await pool.access());
 
     await currency.connect(lp).approve(pool.address, _A("8000"));
     await pool.connect(lp).deposit(srEtk.address, _A("5000"));
@@ -668,7 +667,7 @@ async function addRiskModuleWithOracles(
   price = undefined
 ) {
   if (oracle === undefined) {
-    const PriceOracleMock = await hre.ethers.getContractFactory("PriceOracleMock");
+    const PriceOracleMock = await ethers.getContractFactory("PriceOracleMock");
     oracle = await PriceOracleMock.deploy(price || _W(0));
   }
 
@@ -678,7 +677,7 @@ async function addRiskModuleWithOracles(
 }
 
 async function addPriceRiskModule(pool, premiumsAccount, oracle, slotSize = _W("0.01")) {
-  const PriceRiskModule = await hre.ethers.getContractFactory("PriceRiskModule");
+  const PriceRiskModule = await ethers.getContractFactory("PriceRiskModule");
   const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
     extraConstructorArgs: [slotSize],
     extraArgs: [oracle.address],
