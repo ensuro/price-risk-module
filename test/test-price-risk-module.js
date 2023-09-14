@@ -347,6 +347,8 @@ describe("Test PriceRiskModule contract", function () {
     expect(policyId).to.be.equal(ethers.BigNumber.from(2).pow(96).mul(ethers.BigNumber.from(rm.address)).add(1));
     await expect(tx).to.emit(rm, "NewPricePolicy").withArgs(cust.address, policyId, lowTriggerPrice, true);
 
+    expect(await rm.getPolicyData(policyId)).to.be.deep.equal([newPolicyEvt.args.policy, lowTriggerPrice, true]);
+
     const [hPremium, highPricing] = await rm.pricePolicy(highTriggerPrice, false, _A(100), expiration);
     expect(highPricing.lossProb).to.be.equal(_W("0.20"));
     expect(highPricing.jrCollRatio).to.be.equal(_W("0.40"));
@@ -363,8 +365,14 @@ describe("Test PriceRiskModule contract", function () {
     await oracle.setPrice(_E("1.09"));
     await expect(() => rm.triggerPolicy(policyId)).to.changeTokenBalance(currency, cust, _A(1000));
 
+    // getPolicyData remains the same even when the policy has triggered
+    expect(await rm.getPolicyData(policyId)).to.be.deep.equal([newPolicyEvt.args.policy, lowTriggerPrice, true]);
+
     await oracle.setPrice(_E("1.80"));
     await expect(() => rm.triggerPolicy(policyId2)).to.changeTokenBalance(currency, cust, _A(100));
+
+    expect((await rm.getPolicyData(policyId2))[1]).to.be.equal(highTriggerPrice);
+    expect((await rm.getPolicyData(policyId2))[2]).to.be.equal(false);
   });
 
   it("Should calculate policy premium and loss probability (1% slots)", async () => {
