@@ -96,9 +96,7 @@ describe("Test PriceRiskModule contract", function () {
 
     await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner.address);
 
-    await expect(rm.setOracle(AddressZero)).to.be.revertedWith(
-      "PriceRiskModule: oracle_ cannot be the zero address"
-    );
+    await expect(rm.setOracle(AddressZero)).to.be.revertedWith("PriceRiskModule: oracle_ cannot be the zero address");
 
     await expect(rm.setOracle(newOracle.address)).not.to.be.reverted;
 
@@ -194,9 +192,7 @@ describe("Test PriceRiskModule contract", function () {
     const { rm } = await addRiskModuleWithOracles(pool, premiumsAccount);
 
     await expect(
-      rm
-        .connect(cust)
-        .newPolicy(_E("1.1"), true, _A(1000), await helpers.time.latest(), AddressZero)
+      rm.connect(cust).newPolicy(_E("1.1"), true, _A(1000), await helpers.time.latest(), AddressZero)
     ).to.be.revertedWith("onBehalfOf cannot be the zero address");
   });
 

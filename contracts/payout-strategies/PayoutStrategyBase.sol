@@ -37,14 +37,15 @@ abstract contract PayoutStrategyBase is
   IPolicyPool internal immutable _policyPool;
 
   modifier onlyPolicyPool() {
-    require(_msgSender() == address(_policyPool), "PayoutStrategyBase: The caller must be the PolicyPool");
+    require(
+      _msgSender() == address(_policyPool),
+      "PayoutStrategyBase: The caller must be the PolicyPool"
+    );
     _;
   }
 
-   /// @custom:oz-upgrades-unsafe-allow constructor
-  constructor(
-    IPolicyPool policyPool_
-  ) {
+  /// @custom:oz-upgrades-unsafe-allow constructor
+  constructor(IPolicyPool policyPool_) {
     require(
       address(policyPool_) != address(0),
       "PayoutStrategyBase: policyPool_ cannot be the zero address"
@@ -65,9 +66,7 @@ abstract contract PayoutStrategyBase is
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __PayoutStrategyBase_init_unchained(
-    address admin
-  ) internal onlyInitializing {
+  function __PayoutStrategyBase_init_unchained(address admin) internal onlyInitializing {
     // optional admin
     if (admin != address(0)) {
       _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
@@ -80,16 +79,22 @@ abstract contract PayoutStrategyBase is
   // solhint-disable-next-line no-empty-blocks
   function _authorizeUpgrade(address) internal override onlyRole(GUARDIAN_ROLE) {}
 
-  function supportsInterface(bytes4 interfaceId) public view virtual override(AccessControlUpgradeable,
-                                                                              ERC721Upgradeable) returns (bool) {
-    return AccessControlUpgradeable.supportsInterface(interfaceId) ||
+  function supportsInterface(bytes4 interfaceId)
+    public
+    view
+    virtual
+    override(AccessControlUpgradeable, ERC721Upgradeable)
+    returns (bool)
+  {
+    return
+      AccessControlUpgradeable.supportsInterface(interfaceId) ||
       ERC721Upgradeable.supportsInterface(interfaceId) ||
       interfaceId == type(IPolicyHolder).interfaceId;
   }
 
   function onERC721Received(
-    address,   // operator is the risk module that called newPolicy in the PolicyPool. Ignored for now,
-               // perhaps in the future we can check is a PriceRiskModule
+    address, // operator is the risk module that called newPolicy in the PolicyPool. Ignored for now,
+    // perhaps in the future we can check is a PriceRiskModule
     address from,
     uint256 tokenId,
     bytes calldata data
@@ -102,13 +107,13 @@ abstract contract PayoutStrategyBase is
   }
 
   function onPayoutReceived(
-    address,   // operator - ignored
-    address,   // from - Must be the PolicyPool, ignored too. Not too relevant this parameter
+    address, // operator - ignored
+    address, // from - Must be the PolicyPool, ignored too. Not too relevant this parameter
     uint256 tokenId,
     uint256 amount
   ) external override onlyPolicyPool returns (bytes4) {
-    _handlePayout(ownerOf(tokenId), amount);   // using ownerOf, it will revert if the owner doesn't exists, but
-                                               // shouldn't happen.
+    _handlePayout(ownerOf(tokenId), amount); // using ownerOf, it will revert if the owner doesn't exists, but
+    // shouldn't happen.
     return IPolicyHolder.onPayoutReceived.selector;
   }
 
@@ -116,14 +121,17 @@ abstract contract PayoutStrategyBase is
     address,
     address,
     uint256
-  ) external override view onlyPolicyPool returns (bytes4) {
+  ) external view override onlyPolicyPool returns (bytes4) {
     // We don't do anything for now, in the future perhaps we can implement auto-renew.
     // TODO: should we burn the NFT?
     return IPolicyHolder.onPolicyExpired.selector;
   }
 
   function recoverPolicy(uint256 policyId) external {
-    require(ownerOf(policyId) == _msgSender(), "PayoutStrategyBase: you must own the NFT to recover the policy");
+    require(
+      ownerOf(policyId) == _msgSender(),
+      "PayoutStrategyBase: you must own the NFT to recover the policy"
+    );
     // The following check is not needed since the contract logic should take care this always happens
     // require(_policyPool.ownerOf(policyId) == address(this));
     _burn(policyId);
@@ -180,12 +188,16 @@ abstract contract PayoutStrategyBase is
     bytes32 permitS
   ) public returns (uint256 policyId) {
     IERC20Permit(address(_policyPool.currency())).permit(
-      _msgSender(), address(this), permitValue, permitDeadline,
-      permitV, permitR, permitS
+      _msgSender(),
+      address(this),
+      permitValue,
+      permitDeadline,
+      permitV,
+      permitR,
+      permitS
     );
     return newPolicy(riskModule, triggerPrice, lower, payout, expiration, onBehalfOf);
   }
 
   function _handlePayout(address receiver, uint256 amount) internal virtual;
-
 }

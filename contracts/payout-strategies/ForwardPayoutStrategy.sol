@@ -9,11 +9,9 @@ import {IPolicyPool} from "@ensuro/core/contracts/interfaces/IPolicyPool.sol";
 contract ForwardPayoutStrategy is PayoutStrategyBase {
   using SafeERC20 for IERC20Metadata;
 
-   /// @custom:oz-upgrades-unsafe-allow constructor
-  constructor(
-    IPolicyPool policyPool_
-  ) PayoutStrategyBase(policyPool_)
-  {}
+  /// @custom:oz-upgrades-unsafe-allow constructor
+  // solhint-disable-next-line no-empty-blocks
+  constructor(IPolicyPool policyPool_) PayoutStrategyBase(policyPool_) {}
 
   function _handlePayout(address receiver, uint256 amount) internal override {
     _policyPool.currency().safeTransfer(receiver, amount);
