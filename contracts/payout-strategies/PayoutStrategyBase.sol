@@ -34,6 +34,7 @@ abstract contract PayoutStrategyBase is
   using SafeERC20 for IERC20Metadata;
 
   bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IPolicyPool internal immutable _policyPool;
 
   modifier onlyPolicyPool() {
@@ -69,7 +70,7 @@ abstract contract PayoutStrategyBase is
   function __PayoutStrategyBase_init_unchained(address admin) internal onlyInitializing {
     // optional admin
     if (admin != address(0)) {
-      _setupRole(DEFAULT_ADMIN_ROLE, _msgSender());
+      _setupRole(DEFAULT_ADMIN_ROLE, admin);
     }
 
     // Infinite approval, so we don't need to approve again for each acquired policy

@@ -13,6 +13,14 @@ contract ForwardPayoutStrategy is PayoutStrategyBase {
   // solhint-disable-next-line no-empty-blocks
   constructor(IPolicyPool policyPool_) PayoutStrategyBase(policyPool_) {}
 
+  function initialize(
+    string memory name_,
+    string memory symbol_,
+    address admin
+  ) public virtual initializer {
+    __PayoutStrategyBase_init(name_, symbol_, admin);
+  }
+
   function _handlePayout(address receiver, uint256 amount) internal override {
     _policyPool.currency().safeTransfer(receiver, amount);
   }
