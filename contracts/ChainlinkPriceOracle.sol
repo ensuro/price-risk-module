@@ -9,7 +9,7 @@ import {IPolicyPool} from "@ensuro/core/contracts/interfaces/IPolicyPool.sol";
 import {IPremiumsAccount} from "@ensuro/core/contracts/interfaces/IPremiumsAccount.sol";
 import {RiskModule} from "@ensuro/core/contracts/RiskModule.sol";
 import {Policy} from "@ensuro/core/contracts/Policy.sol";
-import {WadRayMath} from "./dependencies/WadRayMath.sol";
+import {WadRayMath} from "@ensuro/core/contracts/dependencies/WadRayMath.sol";
 import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
 
 /**
