@@ -3,11 +3,7 @@ const hre = require("hardhat");
 const { ethers } = hre;
 const { AddressZero } = ethers.constants;
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const {
-  _E,
-  _W,
-  amountFunction,
-} = require("@ensuro/core/js/utils");
+const { _E, _W, amountFunction } = require("@ensuro/core/js/utils");
 
 const HOUR = 3600;
 
@@ -48,9 +44,9 @@ describe("Test PriceRiskModule contract", function () {
 
   it("Should revert if assetOracle=0 but accept referenceOracle=0", async () => {
     const asset = await deployAggMock(8);
-    await expect(
-      ChainlinkPriceOracle.deploy(AddressZero, AddressZero, 3600)
-    ).to.be.revertedWith("PriceRiskModule: assetOracle_ cannot be the zero address");
+    await expect(ChainlinkPriceOracle.deploy(AddressZero, AddressZero, 3600)).to.be.revertedWith(
+      "PriceRiskModule: assetOracle_ cannot be the zero address"
+    );
 
     const oracle = await ChainlinkPriceOracle.deploy(asset.address, AddressZero, 3600);
     expect(await oracle.assetOracle()).to.be.equal(asset.address);

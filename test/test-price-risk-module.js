@@ -11,6 +11,7 @@ const {
   accessControlMessage,
   grantRole,
   grantComponentRole,
+  makePolicyId,
 } = require("@ensuro/core/js/utils");
 const {
   initCurrency,
@@ -96,9 +97,7 @@ describe("Test PriceRiskModule contract", function () {
 
     await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner.address);
 
-    await expect(rm.setOracle(AddressZero)).to.be.revertedWith(
-      "PriceRiskModule: oracle_ cannot be the zero address"
-    );
+    await expect(rm.setOracle(AddressZero)).to.be.revertedWith("PriceRiskModule: oracle_ cannot be the zero address");
 
     await expect(rm.setOracle(newOracle.address)).not.to.be.reverted;
 
@@ -194,9 +193,7 @@ describe("Test PriceRiskModule contract", function () {
     const { rm } = await addRiskModuleWithOracles(pool, premiumsAccount);
 
     await expect(
-      rm
-        .connect(cust)
-        .newPolicy(_E("1.1"), true, _A(1000), await helpers.time.latest(), AddressZero)
+      rm.connect(cust).newPolicy(_E("1.1"), true, _A(1000), await helpers.time.latest(), AddressZero)
     ).to.be.revertedWith("onBehalfOf cannot be the zero address");
   });
 
@@ -344,7 +341,7 @@ describe("Test PriceRiskModule contract", function () {
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
     const policyId = newPolicyEvt.args.policy.id;
     expect(policyId.mask(96)).to.be.equal(1);
-    expect(policyId).to.be.equal(ethers.BigNumber.from(2).pow(96).mul(ethers.BigNumber.from(rm.address)).add(1));
+    expect(policyId).to.be.equal(makePolicyId(rm.address, 1));
     await expect(tx).to.emit(rm, "NewPricePolicy").withArgs(cust.address, policyId, lowTriggerPrice, true);
 
     expect(await rm.getPolicyData(policyId)).to.be.deep.equal([newPolicyEvt.args.policy, lowTriggerPrice, true]);
@@ -356,7 +353,7 @@ describe("Test PriceRiskModule contract", function () {
     expect(hPremium).to.be.equal(_A("20.000685"));
 
     await currency.connect(cust).approve(pool.address, hPremium);
-    const policyId2 = ethers.BigNumber.from(2).pow(96).mul(ethers.BigNumber.from(rm.address)).add(2);
+    const policyId2 = makePolicyId(rm.address, 2);
     await expect(rm.connect(cust).newPolicy(highTriggerPrice, false, _A(100), expiration, cust.address))
       .to.emit(rm, "NewPricePolicy")
       .withArgs(cust.address, policyId2, highTriggerPrice, false);
@@ -633,8 +630,6 @@ describe("Test PriceRiskModule contract", function () {
       [_A("8000"), _A("500")]
     );
 
-    const wmatic = await initCurrency({ name: "Test WETH", symbol: "WETH", decimals: 18, initial_supply: _E("1000") });
-
     const pool = await deployPool({
       currency: currency.address,
       grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
@@ -662,7 +657,6 @@ describe("Test PriceRiskModule contract", function () {
       jrEtk,
       srEtk,
       premiumsAccount,
-      wmatic,
     };
   }
 });
