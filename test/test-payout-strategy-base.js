@@ -3,7 +3,15 @@ const hre = require("hardhat");
 const { ethers } = hre;
 const { AddressZero, HashZero } = ethers.constants;
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
-const { _W, _E, amountFunction, grantComponentRole, makePolicyId } = require("@ensuro/core/js/utils");
+const {
+  _W,
+  _E,
+  amountFunction,
+  grantComponentRole,
+  makePolicyId,
+  grantRole,
+  accessControlMessage,
+} = require("@ensuro/core/js/utils");
 const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("@ensuro/core/js/test-utils");
 
 const HOUR = 3600;
@@ -29,6 +37,66 @@ describe("Test PayoutStrategyBase contract", function () {
     await expect(ForwardPayoutStrategy.deploy(pool.address)).not.to.be.reverted;
   });
 
+  it("Should never allow reinitialization", async () => {
+    const { pool, ForwardPayoutStrategy } = await helpers.loadFixture(deployPoolFixture);
+    const fps = await hre.upgrades.deployProxy(ForwardPayoutStrategy, ["The Name", "SYMB", lp.address], {
+      kind: "uups",
+      constructorArgs: [pool.address],
+    });
+
+    await expect(fps.initialize("Another Name", "SYMB", lp.address)).to.be.revertedWith(
+      "Initializable: contract is already initialized"
+    );
+  });
+
+  it("Shouldn't be administrable if created without admin", async () => {
+    const { pool, ForwardPayoutStrategy } = await helpers.loadFixture(deployPoolFixture);
+    const fps = await hre.upgrades.deployProxy(ForwardPayoutStrategy, ["The Name", "SYMB", AddressZero], {
+      kind: "uups",
+      constructorArgs: [pool.address],
+    });
+
+    await expect(grantRole(hre, fps.connect(owner), "GUARDIAN_ROLE", lp)).to.be.revertedWith(
+      accessControlMessage(owner.address, null, "DEFAULT_ADMIN_ROLE")
+    );
+  });
+
+  it("Should be upgradeable only by GUARDIAN_ROLE", async () => {
+    const { pool, ForwardPayoutStrategy } = await helpers.loadFixture(deployPoolFixture);
+    const fps = await hre.upgrades.deployProxy(ForwardPayoutStrategy, ["The Name", "SYMB", owner.address], {
+      kind: "uups",
+      constructorArgs: [pool.address],
+    });
+    await grantRole(hre, fps.connect(owner), "GUARDIAN_ROLE", lp);
+    const newImpl = await ForwardPayoutStrategy.deploy(pool.address);
+
+    await expect(fps.connect(cust).upgradeTo(newImpl.address)).to.be.revertedWith(
+      accessControlMessage(cust.address, null, "GUARDIAN_ROLE")
+    );
+
+    await expect(fps.connect(lp).upgradeTo(newImpl.address)).to.emit(fps, "Upgraded").withArgs(newImpl.address);
+  });
+
+  it("Should check event methods are only callable by the pool", async () => {
+    const { pool, ForwardPayoutStrategy } = await helpers.loadFixture(deployPoolFixture);
+    const fps = await hre.upgrades.deployProxy(ForwardPayoutStrategy, ["The Name", "SYMB", AddressZero], {
+      kind: "uups",
+      constructorArgs: [pool.address],
+    });
+
+    await expect(fps.connect(cust).onERC721Received(pool.address, cust.address, 1, HashZero)).to.be.revertedWith(
+      "PayoutStrategyBase: The caller must be the PolicyPool"
+    );
+
+    await expect(fps.connect(cust).onPayoutReceived(pool.address, cust.address, 1, 0)).to.be.revertedWith(
+      "PayoutStrategyBase: The caller must be the PolicyPool"
+    );
+
+    await expect(fps.connect(cust).onPolicyExpired(pool.address, cust.address, 12)).to.be.revertedWith(
+      "PayoutStrategyBase: The caller must be the PolicyPool"
+    );
+  });
+
   it("Should initialize with name and symbol and permission granted to admin", async () => {
     const { pool, ForwardPayoutStrategy } = await helpers.loadFixture(deployPoolFixture);
     const fps = await hre.upgrades.deployProxy(ForwardPayoutStrategy, ["The Name", "SYMB", lp.address], {
@@ -40,6 +108,29 @@ describe("Test PayoutStrategyBase contract", function () {
     expect(await fps.symbol()).to.be.equal("SYMB");
     expect(await fps.hasRole(await fps.DEFAULT_ADMIN_ROLE(), lp.address)).to.equal(true);
     expect(await fps.hasRole(await fps.DEFAULT_ADMIN_ROLE(), owner.address)).to.equal(false);
+  });
+
+  it("Should support the expected interfaces", async () => {
+    const { pool, ForwardPayoutStrategy } = await helpers.loadFixture(deployPoolFixture);
+    const fps = await hre.upgrades.deployProxy(ForwardPayoutStrategy, ["The Name", "SYMB", lp.address], {
+      kind: "uups",
+      constructorArgs: [pool.address],
+    });
+
+    const interfaceIds = {
+      IERC165: "0x01ffc9a7",
+      IERC20: "0x36372b07",
+      IERC721: "0x80ac58cd",
+      IAccessControl: "0x7965db0b",
+      IAccessManager: "0x272b8c47",
+      IPolicyHolder: "0x3ece0a89",
+    };
+
+    expect(await fps.supportsInterface(interfaceIds.IERC165)).to.be.equal(true);
+    expect(await fps.supportsInterface(interfaceIds.IPolicyHolder)).to.be.equal(true);
+    expect(await fps.supportsInterface(interfaceIds.IERC20)).to.be.equal(false);
+    expect(await fps.supportsInterface(interfaceIds.IERC721)).to.be.equal(true);
+    expect(await fps.supportsInterface(interfaceIds.IAccessControl)).to.be.equal(true);
   });
 
   it("Should mint an NFT if receiving a policy, and should burn it if recovered", async () => {
@@ -160,6 +251,11 @@ describe("Test PayoutStrategyBase contract", function () {
     expect(await fps.ownerOf(policyId)).to.be.equal(cust.address);
     expect(await pool.ownerOf(policyId2)).to.be.equal(fps.address);
     expect(await fps.ownerOf(policyId2)).to.be.equal(cust.address);
+
+    // Fails with unsupported duration
+    await expect(
+      fps.connect(cust).newPolicy(rm.address, _W(1200), true, _A(700), start + HOUR * 48, cust.address)
+    ).to.be.revertedWith("PayoutStrategyBase: premium = 0, policy not supported");
 
     await helpers.time.increase(HOUR);
     await oracle.setPrice(_E("1390"));
