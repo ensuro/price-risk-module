@@ -7,12 +7,14 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 import {AddressUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
+import {IERC165Upgradeable} from "@openzeppelin/contracts-upgradeable/interfaces/IERC165Upgradeable.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ERC721EnumerableUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IPriceRiskModule} from "../interfaces/IPriceRiskModule.sol";
+import {IPayoutAutomation} from "../interfaces/IPayoutAutomation.sol";
 import {IPolicyPool} from "@ensuro/core/contracts/interfaces/IPolicyPool.sol";
 import {IPolicyHolder} from "@ensuro/core/contracts/interfaces/IPolicyHolder.sol";
 
@@ -29,7 +31,8 @@ abstract contract PayoutAutomationBase is
   AccessControlUpgradeable,
   ERC721EnumerableUpgradeable,
   UUPSUpgradeable,
-  IPolicyHolder
+  IPolicyHolder,
+  IPayoutAutomation
 {
   using SafeERC20 for IERC20Metadata;
 
@@ -85,7 +88,7 @@ abstract contract PayoutAutomationBase is
     public
     view
     virtual
-    override(AccessControlUpgradeable, ERC721EnumerableUpgradeable)
+    override(AccessControlUpgradeable, ERC721EnumerableUpgradeable, IERC165Upgradeable)
     returns (bool)
   {
     return
@@ -168,7 +171,7 @@ abstract contract PayoutAutomationBase is
     uint256 payout,
     uint40 expiration,
     address onBehalfOf
-  ) public returns (uint256 policyId) {
+  ) public virtual override returns (uint256 policyId) {
     (uint256 premium, ) = riskModule.pricePolicy(triggerPrice, lower, payout, expiration);
     require(premium != 0, "PayoutAutomationBase: premium = 0, policy not supported");
     _policyPool.currency().safeTransferFrom(_msgSender(), address(this), premium);
@@ -189,7 +192,7 @@ abstract contract PayoutAutomationBase is
     uint8 permitV,
     bytes32 permitR,
     bytes32 permitS
-  ) public returns (uint256 policyId) {
+  ) public virtual override returns (uint256 policyId) {
     IERC20Permit(address(_policyPool.currency())).permit(
       _msgSender(),
       address(this),
