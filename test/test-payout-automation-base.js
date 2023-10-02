@@ -18,7 +18,7 @@ const HOUR = 3600;
 
 hre.upgrades.silenceWarnings();
 
-describe("Test PayoutStrategyBase contract", function () {
+describe("Test PayoutAutomationBase contract", function () {
   let cust, lp, owner;
   let _A;
 
@@ -30,16 +30,16 @@ describe("Test PayoutStrategyBase contract", function () {
   });
 
   it("Should fail if constructed with null address ", async () => {
-    const { pool, ForwardPayoutStrategy } = await helpers.loadFixture(deployPoolFixture);
-    await expect(ForwardPayoutStrategy.deploy(AddressZero)).to.be.revertedWith(
-      "PayoutStrategyBase: policyPool_ cannot be the zero address"
+    const { pool, ForwardPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
+    await expect(ForwardPayoutAutomation.deploy(AddressZero)).to.be.revertedWith(
+      "PayoutAutomationBase: policyPool_ cannot be the zero address"
     );
-    await expect(ForwardPayoutStrategy.deploy(pool.address)).not.to.be.reverted;
+    await expect(ForwardPayoutAutomation.deploy(pool.address)).not.to.be.reverted;
   });
 
   it("Should never allow reinitialization", async () => {
-    const { pool, ForwardPayoutStrategy } = await helpers.loadFixture(deployPoolFixture);
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutStrategy, ["The Name", "SYMB", lp.address], {
+    const { pool, ForwardPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
+    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
@@ -50,8 +50,8 @@ describe("Test PayoutStrategyBase contract", function () {
   });
 
   it("Shouldn't be administrable if created without admin", async () => {
-    const { pool, ForwardPayoutStrategy } = await helpers.loadFixture(deployPoolFixture);
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutStrategy, ["The Name", "SYMB", AddressZero], {
+    const { pool, ForwardPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
+    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", AddressZero], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
@@ -62,13 +62,13 @@ describe("Test PayoutStrategyBase contract", function () {
   });
 
   it("Should be upgradeable only by GUARDIAN_ROLE", async () => {
-    const { pool, ForwardPayoutStrategy } = await helpers.loadFixture(deployPoolFixture);
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutStrategy, ["The Name", "SYMB", owner.address], {
+    const { pool, ForwardPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
+    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", owner.address], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
     await grantRole(hre, fps.connect(owner), "GUARDIAN_ROLE", lp);
-    const newImpl = await ForwardPayoutStrategy.deploy(pool.address);
+    const newImpl = await ForwardPayoutAutomation.deploy(pool.address);
 
     await expect(fps.connect(cust).upgradeTo(newImpl.address)).to.be.revertedWith(
       accessControlMessage(cust.address, null, "GUARDIAN_ROLE")
@@ -78,28 +78,28 @@ describe("Test PayoutStrategyBase contract", function () {
   });
 
   it("Should check event methods are only callable by the pool", async () => {
-    const { pool, ForwardPayoutStrategy } = await helpers.loadFixture(deployPoolFixture);
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutStrategy, ["The Name", "SYMB", AddressZero], {
+    const { pool, ForwardPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
+    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", AddressZero], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
 
     await expect(fps.connect(cust).onERC721Received(pool.address, cust.address, 1, HashZero)).to.be.revertedWith(
-      "PayoutStrategyBase: The caller must be the PolicyPool"
+      "PayoutAutomationBase: The caller must be the PolicyPool"
     );
 
     await expect(fps.connect(cust).onPayoutReceived(pool.address, cust.address, 1, 0)).to.be.revertedWith(
-      "PayoutStrategyBase: The caller must be the PolicyPool"
+      "PayoutAutomationBase: The caller must be the PolicyPool"
     );
 
     await expect(fps.connect(cust).onPolicyExpired(pool.address, cust.address, 12)).to.be.revertedWith(
-      "PayoutStrategyBase: The caller must be the PolicyPool"
+      "PayoutAutomationBase: The caller must be the PolicyPool"
     );
   });
 
   it("Should initialize with name and symbol and permission granted to admin", async () => {
-    const { pool, ForwardPayoutStrategy } = await helpers.loadFixture(deployPoolFixture);
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutStrategy, ["The Name", "SYMB", lp.address], {
+    const { pool, ForwardPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
+    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
@@ -111,8 +111,8 @@ describe("Test PayoutStrategyBase contract", function () {
   });
 
   it("Should support the expected interfaces", async () => {
-    const { pool, ForwardPayoutStrategy } = await helpers.loadFixture(deployPoolFixture);
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutStrategy, ["The Name", "SYMB", lp.address], {
+    const { pool, ForwardPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
+    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
@@ -134,9 +134,9 @@ describe("Test PayoutStrategyBase contract", function () {
   });
 
   it("Should mint an NFT if receiving a policy, and should burn it if recovered", async () => {
-    const { pool, ForwardPayoutStrategy, rm } = await helpers.loadFixture(deployPoolFixture);
+    const { pool, ForwardPayoutAutomation, rm } = await helpers.loadFixture(deployPoolFixture);
     const start = await helpers.time.latest();
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutStrategy, ["The Name", "SYMB", lp.address], {
+    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
@@ -158,7 +158,7 @@ describe("Test PayoutStrategyBase contract", function () {
     expect(await fps.ownerOf(policyId)).to.be.equal(cust.address);
 
     await expect(fps.recoverPolicy(policyId)).to.be.revertedWith(
-      "PayoutStrategyBase: you must own the NFT to recover the policy"
+      "PayoutAutomationBase: you must own the NFT to recover the policy"
     );
 
     // Policy recovered by the customer
@@ -171,9 +171,9 @@ describe("Test PayoutStrategyBase contract", function () {
   });
 
   it("Should mint an NFT if receiving a policy, and receive the payout if triggered", async () => {
-    const { pool, ForwardPayoutStrategy, rm, oracle, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { pool, ForwardPayoutAutomation, rm, oracle, currency } = await helpers.loadFixture(deployPoolFixture);
     const start = await helpers.time.latest();
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutStrategy, ["The Name", "SYMB", lp.address], {
+    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
@@ -203,26 +203,32 @@ describe("Test PayoutStrategyBase contract", function () {
     expect(await fps.ownerOf(policyId)).to.be.equal(cust.address);
     expect(await pool.ownerOf(policyId2)).to.be.equal(fps.address);
     expect(await fps.ownerOf(policyId2)).to.be.equal(cust.address);
+    expect(await fps.balanceOf(cust.address)).to.be.equal(2);
 
     await helpers.time.increase(HOUR);
     await oracle.setPrice(_E("1390"));
     await expect(() => rm.triggerPolicy(policyId)).to.changeTokenBalance(currency, cust, _A(1000));
 
+    expect(await fps.balanceOf(cust.address)).to.be.equal(1);
+
     await helpers.time.increase(HOUR * 24);
     const policy2 = (await rm.getPolicyData(policyId2))[0];
     await expect(pool.expirePolicy(policy2)).not.to.be.reverted;
 
-    // NFT ownership doesn't changes when policies are triggered or expired
+    expect(await fps.balanceOf(cust.address)).to.be.equal(0);
+
+    // Pool NFT ownership doesn't changes when policies are triggered or expired
     expect(await pool.ownerOf(policyId)).to.be.equal(fps.address);
-    expect(await fps.ownerOf(policyId)).to.be.equal(cust.address);
     expect(await pool.ownerOf(policyId2)).to.be.equal(fps.address);
-    expect(await fps.ownerOf(policyId2)).to.be.equal(cust.address);
+    // But FPS NFTs are burnt
+    await expect(fps.ownerOf(policyId)).to.be.revertedWith("ERC721: invalid token ID");
+    await expect(fps.ownerOf(policyId2)).to.be.revertedWith("ERC721: invalid token ID");
   });
 
   it("Can create the policy through the FPS and works the same way", async () => {
-    const { pool, ForwardPayoutStrategy, rm, oracle, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { pool, ForwardPayoutAutomation, rm, oracle, currency } = await helpers.loadFixture(deployPoolFixture);
     const start = await helpers.time.latest();
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutStrategy, ["The Name", "SYMB", lp.address], {
+    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
@@ -255,7 +261,7 @@ describe("Test PayoutStrategyBase contract", function () {
     // Fails with unsupported duration
     await expect(
       fps.connect(cust).newPolicy(rm.address, _W(1200), true, _A(700), start + HOUR * 48, cust.address)
-    ).to.be.revertedWith("PayoutStrategyBase: premium = 0, policy not supported");
+    ).to.be.revertedWith("PayoutAutomationBase: premium = 0, policy not supported");
 
     await helpers.time.increase(HOUR);
     await oracle.setPrice(_E("1390"));
@@ -265,17 +271,18 @@ describe("Test PayoutStrategyBase contract", function () {
     const policy2 = (await rm.getPolicyData(policyId2))[0];
     await expect(pool.expirePolicy(policy2)).not.to.be.reverted;
 
-    // NFT ownership doesn't changes when policies are triggered or expired
+    // Pool NFT ownership doesn't changes when policies are triggered or expired
     expect(await pool.ownerOf(policyId)).to.be.equal(fps.address);
-    expect(await fps.ownerOf(policyId)).to.be.equal(cust.address);
     expect(await pool.ownerOf(policyId2)).to.be.equal(fps.address);
-    expect(await fps.ownerOf(policyId2)).to.be.equal(cust.address);
+    // But FPS NFTs are burnt
+    await expect(fps.ownerOf(policyId)).to.be.revertedWith("ERC721: invalid token ID");
+    await expect(fps.ownerOf(policyId2)).to.be.revertedWith("ERC721: invalid token ID");
   });
 
   it("Can create the policy through the FPS using permit", async () => {
-    const { pool, ForwardPayoutStrategy, rm, oracle, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { pool, ForwardPayoutAutomation, rm, oracle, currency } = await helpers.loadFixture(deployPoolFixture);
     const start = await helpers.time.latest();
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutStrategy, ["The Name", "SYMB", lp.address], {
+    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
@@ -439,11 +446,12 @@ describe("Test PayoutStrategyBase contract", function () {
     const policy2 = (await rm.getPolicyData(policyId2))[0];
     await expect(pool.expirePolicy(policy2)).not.to.be.reverted;
 
-    // NFT ownership doesn't changes when policies are triggered or expired
+    // Pool NFT ownership doesn't changes when policies are triggered or expired
     expect(await pool.ownerOf(policyId)).to.be.equal(fps.address);
-    expect(await fps.ownerOf(policyId)).to.be.equal(cust.address);
     expect(await pool.ownerOf(policyId2)).to.be.equal(fps.address);
-    expect(await fps.ownerOf(policyId2)).to.be.equal(cust.address);
+    // But FPS NFTs are burnt
+    await expect(fps.ownerOf(policyId)).to.be.revertedWith("ERC721: invalid token ID");
+    await expect(fps.ownerOf(policyId2)).to.be.revertedWith("ERC721: invalid token ID");
   });
 
   // eslint-disable-next-line no-shadow
@@ -571,7 +579,7 @@ describe("Test PayoutStrategyBase contract", function () {
     const newCdf = Array(await rm.PRICE_SLOTS()).fill([_W("0.01"), _W("0.05"), _W("1.0")]);
     await rm.setCDF(24, newCdf);
 
-    const ForwardPayoutStrategy = await ethers.getContractFactory("ForwardPayoutStrategy");
+    const ForwardPayoutAutomation = await ethers.getContractFactory("ForwardPayoutAutomation");
 
     return {
       pool,
@@ -584,7 +592,7 @@ describe("Test PayoutStrategyBase contract", function () {
       oracle,
       PriceRiskModule,
       PriceOracleMock,
-      ForwardPayoutStrategy,
+      ForwardPayoutAutomation,
     };
   }
 });

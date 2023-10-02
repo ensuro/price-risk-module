@@ -17,14 +17,14 @@ import {IPolicyPool} from "@ensuro/core/contracts/interfaces/IPolicyPool.sol";
 import {IPolicyHolder} from "@ensuro/core/contracts/interfaces/IPolicyHolder.sol";
 
 /**
- * @title PayoutStrategyBase
+ * @title PayoutAutomationBase
  * @dev This is a base of contracts that will do something with the payout received from a policy. The contracts
  *      receives the NFT representing an Ensuro Policy and mints an NFT to original owner. That NFT now express how will
  *      receive the payout effect if the policy is triggered. Also the owner can choose to re-claim the policy.
  * @custom:security-contact security@ensuro.co
  * @author Ensuro
  */
-abstract contract PayoutStrategyBase is
+abstract contract PayoutAutomationBase is
   Initializable,
   AccessControlUpgradeable,
   ERC721Upgradeable,
@@ -40,7 +40,7 @@ abstract contract PayoutStrategyBase is
   modifier onlyPolicyPool() {
     require(
       _msgSender() == address(_policyPool),
-      "PayoutStrategyBase: The caller must be the PolicyPool"
+      "PayoutAutomationBase: The caller must be the PolicyPool"
     );
     _;
   }
@@ -49,13 +49,13 @@ abstract contract PayoutStrategyBase is
   constructor(IPolicyPool policyPool_) {
     require(
       address(policyPool_) != address(0),
-      "PayoutStrategyBase: policyPool_ cannot be the zero address"
+      "PayoutAutomationBase: policyPool_ cannot be the zero address"
     );
     _policyPool = policyPool_;
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __PayoutStrategyBase_init(
+  function __PayoutAutomationBase_init(
     string memory name_,
     string memory symbol_,
     address admin
@@ -63,11 +63,11 @@ abstract contract PayoutStrategyBase is
     __UUPSUpgradeable_init();
     __AccessControl_init();
     __ERC721_init(name_, symbol_);
-    __PayoutStrategyBase_init_unchained(admin);
+    __PayoutAutomationBase_init_unchained(admin);
   }
 
   // solhint-disable-next-line func-name-mixedcase
-  function __PayoutStrategyBase_init_unchained(address admin) internal onlyInitializing {
+  function __PayoutAutomationBase_init_unchained(address admin) internal onlyInitializing {
     // optional admin
     if (admin != address(0)) {
       _setupRole(DEFAULT_ADMIN_ROLE, admin);
@@ -113,25 +113,26 @@ abstract contract PayoutStrategyBase is
     uint256 tokenId,
     uint256 amount
   ) external override onlyPolicyPool returns (bytes4) {
-    _handlePayout(ownerOf(tokenId), amount); // using ownerOf, it will revert if the owner doesn't exists, but
-    // shouldn't happen.
+    address paymentReceiver = ownerOf(tokenId);
+    _burn(tokenId);
+    _handlePayout(paymentReceiver, amount);
     return IPolicyHolder.onPayoutReceived.selector;
   }
 
   function onPolicyExpired(
     address,
     address,
-    uint256
-  ) external view override onlyPolicyPool returns (bytes4) {
+    uint256 tokenId
+  ) external override onlyPolicyPool returns (bytes4) {
     // We don't do anything for now, in the future perhaps we can implement auto-renew.
-    // TODO: should we burn the NFT?
+    _burn(tokenId);
     return IPolicyHolder.onPolicyExpired.selector;
   }
 
   function recoverPolicy(uint256 policyId) external {
     require(
       ownerOf(policyId) == _msgSender(),
-      "PayoutStrategyBase: you must own the NFT to recover the policy"
+      "PayoutAutomationBase: you must own the NFT to recover the policy"
     );
     // The following check is not needed since the contract logic should take care this always happens
     // require(_policyPool.ownerOf(policyId) == address(this));
@@ -168,7 +169,7 @@ abstract contract PayoutStrategyBase is
     address onBehalfOf
   ) public returns (uint256 policyId) {
     (uint256 premium, ) = riskModule.pricePolicy(triggerPrice, lower, payout, expiration);
-    require(premium != 0, "PayoutStrategyBase: premium = 0, policy not supported");
+    require(premium != 0, "PayoutAutomationBase: premium = 0, policy not supported");
     _policyPool.currency().safeTransferFrom(_msgSender(), address(this), premium);
     policyId = riskModule.newPolicy(triggerPrice, lower, payout, expiration, address(this));
     _safeMint(onBehalfOf, policyId, "");
