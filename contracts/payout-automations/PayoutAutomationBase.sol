@@ -8,7 +8,7 @@ import {AddressUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/Addr
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ERC721Upgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/ERC721Upgradeable.sol";
+import {ERC721EnumerableUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
@@ -27,7 +27,7 @@ import {IPolicyHolder} from "@ensuro/core/contracts/interfaces/IPolicyHolder.sol
 abstract contract PayoutAutomationBase is
   Initializable,
   AccessControlUpgradeable,
-  ERC721Upgradeable,
+  ERC721EnumerableUpgradeable,
   UUPSUpgradeable,
   IPolicyHolder
 {
@@ -63,6 +63,7 @@ abstract contract PayoutAutomationBase is
     __UUPSUpgradeable_init();
     __AccessControl_init();
     __ERC721_init(name_, symbol_);
+    __ERC721Enumerable_init();
     __PayoutAutomationBase_init_unchained(admin);
   }
 
@@ -84,12 +85,12 @@ abstract contract PayoutAutomationBase is
     public
     view
     virtual
-    override(AccessControlUpgradeable, ERC721Upgradeable)
+    override(AccessControlUpgradeable, ERC721EnumerableUpgradeable)
     returns (bool)
   {
     return
       AccessControlUpgradeable.supportsInterface(interfaceId) ||
-      ERC721Upgradeable.supportsInterface(interfaceId) ||
+      ERC721EnumerableUpgradeable.supportsInterface(interfaceId) ||
       interfaceId == type(IPolicyHolder).interfaceId;
   }
 

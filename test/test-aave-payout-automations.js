@@ -76,7 +76,9 @@ describe("Test AAVE payout automation contracts", function () {
   });
 
   it("Can create the policy through the ps and since there's no debt, deposits in AAVE", async () => {
-    const { pool, AAVERepayPayoutAutomation, rm, oracle, currency, aUSDC } = await helpers.loadFixture(deployPoolFixture);
+    const { pool, AAVERepayPayoutAutomation, rm, oracle, currency, aUSDC } = await helpers.loadFixture(
+      deployPoolFixture
+    );
     const start = await helpers.time.latest();
     const ps = await hre.upgrades.deployProxy(AAVERepayPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
