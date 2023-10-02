@@ -10,7 +10,7 @@ const HOUR = 3600;
 
 hre.upgrades.silenceWarnings();
 
-describe("Test PayoutStrategyBase contract", function () {
+describe("Test AAVE payout automation contracts", function () {
   let cust, cust2, lp, owner;
   let _A;
 
@@ -43,19 +43,19 @@ describe("Test PayoutStrategyBase contract", function () {
   });
 
   it("Should fail if constructed with null address ", async () => {
-    const { pool, AAVERepayPayoutStrategy } = await helpers.loadFixture(deployPoolFixture);
-    await expect(AAVERepayPayoutStrategy.deploy(AddressZero, AddressZero)).to.be.revertedWith(
-      "PayoutStrategyBase: policyPool_ cannot be the zero address"
+    const { pool, AAVERepayPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
+    await expect(AAVERepayPayoutAutomation.deploy(AddressZero, AddressZero)).to.be.revertedWith(
+      "PayoutAutomationBase: policyPool_ cannot be the zero address"
     );
-    await expect(AAVERepayPayoutStrategy.deploy(pool.address, AddressZero)).to.be.revertedWith(
-      "AAVERepayPayoutStrategy: you must specify AAVE's Pool address"
+    await expect(AAVERepayPayoutAutomation.deploy(pool.address, AddressZero)).to.be.revertedWith(
+      "AAVERepayPayoutAutomation: you must specify AAVE's Pool address"
     );
-    await expect(AAVERepayPayoutStrategy.deploy(pool.address, ADDRESSES.aaveV3)).not.to.be.reverted;
+    await expect(AAVERepayPayoutAutomation.deploy(pool.address, ADDRESSES.aaveV3)).not.to.be.reverted;
   });
 
   it("Should never allow reinitialization", async () => {
-    const { pool, AAVERepayPayoutStrategy } = await helpers.loadFixture(deployPoolFixture);
-    const ps = await hre.upgrades.deployProxy(AAVERepayPayoutStrategy, ["The Name", "SYMB", lp.address], {
+    const { pool, AAVERepayPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
+    const ps = await hre.upgrades.deployProxy(AAVERepayPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
       constructorArgs: [pool.address, ADDRESSES.aaveV3],
     });
@@ -66,8 +66,8 @@ describe("Test PayoutStrategyBase contract", function () {
   });
 
   it("Should do infinite approval on initialization", async () => {
-    const { pool, AAVERepayPayoutStrategy, currency } = await helpers.loadFixture(deployPoolFixture);
-    const ps = await hre.upgrades.deployProxy(AAVERepayPayoutStrategy, ["The Name", "SYMB", lp.address], {
+    const { pool, AAVERepayPayoutAutomation, currency } = await helpers.loadFixture(deployPoolFixture);
+    const ps = await hre.upgrades.deployProxy(AAVERepayPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
       constructorArgs: [pool.address, ADDRESSES.aaveV3],
     });
@@ -76,9 +76,11 @@ describe("Test PayoutStrategyBase contract", function () {
   });
 
   it("Can create the policy through the ps and since there's no debt, deposits in AAVE", async () => {
-    const { pool, AAVERepayPayoutStrategy, rm, oracle, currency, aUSDC } = await helpers.loadFixture(deployPoolFixture);
+    const { pool, AAVERepayPayoutAutomation, rm, oracle, currency, aUSDC } = await helpers.loadFixture(
+      deployPoolFixture
+    );
     const start = await helpers.time.latest();
-    const ps = await hre.upgrades.deployProxy(AAVERepayPayoutStrategy, ["The Name", "SYMB", lp.address], {
+    const ps = await hre.upgrades.deployProxy(AAVERepayPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
       constructorArgs: [pool.address, ADDRESSES.aaveV3],
     });
@@ -111,17 +113,18 @@ describe("Test PayoutStrategyBase contract", function () {
     const policy2 = (await rm.getPolicyData(policyId2))[0];
     await expect(pool.expirePolicy(policy2)).not.to.be.reverted;
 
-    // NFT ownership doesn't changes when policies are triggered or expired
+    // Pool NFT ownership doesn't changes when policies are triggered or expired
     expect(await pool.ownerOf(policyId)).to.be.equal(ps.address);
-    expect(await ps.ownerOf(policyId)).to.be.equal(cust.address);
     expect(await pool.ownerOf(policyId2)).to.be.equal(ps.address);
-    expect(await ps.ownerOf(policyId2)).to.be.equal(cust.address);
+    // But FPS NFTs are burnt
+    await expect(ps.ownerOf(policyId)).to.be.revertedWith("ERC721: invalid token ID");
+    await expect(ps.ownerOf(policyId2)).to.be.revertedWith("ERC721: invalid token ID");
   });
 
   it("Can create policies that when triggered repay stable and variable debt", async () => {
     const {
       pool,
-      AAVERepayPayoutStrategy,
+      AAVERepayPayoutAutomation,
       rm,
       oracle,
       currency,
@@ -132,7 +135,7 @@ describe("Test PayoutStrategyBase contract", function () {
       aUSDC,
     } = await helpers.loadFixture(deployPoolFixture);
     const start = await helpers.time.latest();
-    const ps = await hre.upgrades.deployProxy(AAVERepayPayoutStrategy, ["The Name", "SYMB", lp.address], {
+    const ps = await hre.upgrades.deployProxy(AAVERepayPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
       constructorArgs: [pool.address, ADDRESSES.aaveV3],
     });
@@ -182,7 +185,7 @@ describe("Test PayoutStrategyBase contract", function () {
   it("Can create policies that when triggered repay mixed stable and variable debt", async () => {
     const {
       pool,
-      AAVERepayPayoutStrategy,
+      AAVERepayPayoutAutomation,
       rm,
       oracle,
       currency,
@@ -193,7 +196,7 @@ describe("Test PayoutStrategyBase contract", function () {
       aUSDC,
     } = await helpers.loadFixture(deployPoolFixture);
     const start = await helpers.time.latest();
-    const ps = await hre.upgrades.deployProxy(AAVERepayPayoutStrategy, ["The Name", "SYMB", lp.address], {
+    const ps = await hre.upgrades.deployProxy(AAVERepayPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
       constructorArgs: [pool.address, ADDRESSES.aaveV3],
     });
@@ -314,7 +317,7 @@ describe("Test PayoutStrategyBase contract", function () {
     const newCdf = Array(await rm.PRICE_SLOTS()).fill([_W("0.01"), _W("0.05"), _W("1.0")]);
     await rm.setCDF(24, newCdf);
 
-    const AAVERepayPayoutStrategy = await ethers.getContractFactory("AAVERepayPayoutStrategy");
+    const AAVERepayPayoutAutomation = await ethers.getContractFactory("AAVERepayPayoutAutomation");
 
     return {
       pool,
@@ -332,7 +335,7 @@ describe("Test PayoutStrategyBase contract", function () {
       oracle,
       PriceRiskModule,
       PriceOracleMock,
-      AAVERepayPayoutStrategy,
+      AAVERepayPayoutAutomation,
     };
   }
 });
