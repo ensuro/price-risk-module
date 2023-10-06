@@ -129,6 +129,11 @@ describe("Test Gelato Task Creation / Execution", function () {
 // TODO: task cancelation on expiration
 
 async function deployPoolFixture() {
+  // Why isn't hardhat doing this automatically??
+  await hre.network.provider.request({
+    method: "hardhat_reset",
+  });
+
   const [owner, lp, cust, gelato, ...signers] = await ethers.getSigners();
 
   const currency = await initCurrency(
