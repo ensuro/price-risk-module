@@ -49,6 +49,8 @@ interface IPriceRiskModule is IRiskModule {
 
   function triggerPolicy(uint256 policyId) external;
 
+  function policyCanBeTriggered(uint256 policyId) external view returns (bool);
+
   function oracle() external view returns (IPriceOracle);
 
   /**

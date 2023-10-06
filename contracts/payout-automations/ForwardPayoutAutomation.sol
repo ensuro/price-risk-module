@@ -21,7 +21,7 @@ contract ForwardPayoutAutomation is PayoutAutomationBase {
     __PayoutAutomationBase_init(name_, symbol_, admin);
   }
 
-  function _handlePayout(address receiver, uint256 amount) internal override {
+  function _handlePayout(address receiver, uint256 amount) internal virtual override {
     _policyPool.currency().safeTransfer(receiver, amount);
   }
 }

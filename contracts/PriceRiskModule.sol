@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {IPolicyPool} from "@ensuro/core/contracts/interfaces/IPolicyPool.sol";
 import {IPremiumsAccount} from "@ensuro/core/contracts/interfaces/IPremiumsAccount.sol";
 import {IAccessManager} from "@ensuro/core/contracts/interfaces/IAccessManager.sol";
@@ -199,6 +198,16 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     // the policy information, despite the policy is no longer claimable. To check if the policy is active, you should
     // call PolicyPool.getPolicyHash(policyId) and if the output is bytes32(0), that means the policy is no longer
     // active.
+  }
+
+  function policyCanBeTriggered(uint256 policyId) external view returns (bool) {
+    PolicyData storage policy = _policies[policyId];
+    if ((block.timestamp - policy.ensuroPolicy.start) < _state.minDuration) return false;
+
+    uint256 currentPrice = oracle().getCurrentPrice();
+    if (!policy.lower && currentPrice < policy.triggerPrice) return false;
+    if (policy.lower && currentPrice > policy.triggerPrice) return false;
+    return true;
   }
 
   /**

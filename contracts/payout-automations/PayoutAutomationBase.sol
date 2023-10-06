@@ -103,7 +103,7 @@ abstract contract PayoutAutomationBase is
     address from,
     uint256 tokenId,
     bytes calldata data
-  ) external override onlyPolicyPool returns (bytes4) {
+  ) external virtual override onlyPolicyPool returns (bytes4) {
     if (from != address(0)) {
       // I'm receiving a transfer, so I mint a token to the sender
       _safeMint(from, tokenId, data);
@@ -116,7 +116,7 @@ abstract contract PayoutAutomationBase is
     address, // from - Must be the PolicyPool, ignored too. Not too relevant this parameter
     uint256 tokenId,
     uint256 amount
-  ) external override onlyPolicyPool returns (bytes4) {
+  ) external virtual override onlyPolicyPool returns (bytes4) {
     address paymentReceiver = ownerOf(tokenId);
     _burn(tokenId);
     _handlePayout(paymentReceiver, amount);
@@ -127,7 +127,7 @@ abstract contract PayoutAutomationBase is
     address,
     address,
     uint256 tokenId
-  ) external override onlyPolicyPool returns (bytes4) {
+  ) external virtual override onlyPolicyPool returns (bytes4) {
     // We don't do anything for now, in the future perhaps we can implement auto-renew.
     _burn(tokenId);
     return IPolicyHolder.onPolicyExpired.selector;
