@@ -4,6 +4,7 @@ const { ethers } = hre;
 const { MaxUint256 } = ethers.constants;
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
+const { fork } = require("./utils");
 
 const {
   _W,
@@ -24,8 +25,13 @@ const {
 const CURRENCY_DECIMALS = 6;
 const _A = amountFunction(CURRENCY_DECIMALS);
 
-const GELATO_OPS_PROXY_DEPLOYER = "0x5401fe33559a355638b9b37c9640a04a182feff2";
-const ETH = "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE";
+const ADDRESSES = {
+  // polygon mainnet addresses
+  automate: "0x527a819db1eb0e34426297b03bae11F2f8B3A19E",
+  USDC: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+  WMATIC: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
+  ETH: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+};
 
 // enum
 const Module = {
@@ -67,7 +73,9 @@ describe("Test Gelato Task Creation / Execution", function () {
 
     // A task was created
     const triggerPolicySelector = rightPaddedFunctionSelector(rm, "triggerPolicy(uint256)");
-    await expect(tx).to.emit(automate, "TaskCreated").withArgs(rm.address, triggerPolicySelector, anyValue, ETH);
+    await expect(tx)
+      .to.emit(automate, "TaskCreated")
+      .withArgs(rm.address, triggerPolicySelector, anyValue, ADDRESSES.ETH);
 
     // Workaround broken struct match - https://github.com/NomicFoundation/hardhat/issues/3833
     const receipt = await tx.wait();
@@ -129,10 +137,7 @@ describe("Test Gelato Task Creation / Execution", function () {
 // TODO: task cancelation on expiration
 
 async function deployPoolFixture() {
-  // Why isn't hardhat doing this automatically??
-  await hre.network.provider.request({
-    method: "hardhat_reset",
-  });
+  fork(48475972);
 
   const [owner, lp, cust, gelato, ...signers] = await ethers.getSigners();
 
@@ -178,16 +183,6 @@ async function deployPoolFixture() {
   const newCdf = Array(await rm.PRICE_SLOTS()).fill([_W("0.01"), _W("0.05"), _W("1.0")]);
   await rm.setCDF(24, newCdf);
 
-  // The OPS proxy factory doesn't really matter to us because we're not using dedicated msg sender
-  // But it needs to be in this specific address because it's hardcoded in gelato's AutomateReady.sol
-  await helpers.impersonateAccount(GELATO_OPS_PROXY_DEPLOYER);
-  await helpers.setNonce(GELATO_OPS_PROXY_DEPLOYER, "0x2");
-  await helpers.setBalance(GELATO_OPS_PROXY_DEPLOYER, _W("10"));
-  const gelatoOpsProxyFactoryDeployer = await ethers.getSigner(GELATO_OPS_PROXY_DEPLOYER);
-  const OpsProxyFactoryMock = await ethers.getContractFactory("OpsProxyFactoryMock");
-  const opsProxyFactory = await OpsProxyFactoryMock.connect(gelatoOpsProxyFactoryDeployer).deploy({ nonce: 2 });
-  expect(opsProxyFactory.address).to.equal("0xC815dB16D4be6ddf2685C201937905aBf338F5D7");
-
   const AutomateMock = await ethers.getContractFactory("AutomateMock");
   const automate = await AutomateMock.deploy(gelato.address);
 
@@ -203,7 +198,6 @@ async function deployPoolFixture() {
     gelato,
     jrEtk,
     lp,
-    opsProxyFactory,
     oracle,
     owner,
     pool,
