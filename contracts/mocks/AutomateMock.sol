@@ -35,7 +35,7 @@ contract AutomateMock is IAutomate {
   function cancelTask(bytes32 taskId) external override {}
 
   function getFeeDetails() external pure override returns (uint256, address) {
-    return (1337 * GWEI, address(ETH));
+    return (13371337 * GWEI, address(ETH));
   }
 
   function taskTreasury() external pure override returns (ITaskTreasuryUpgradable) {

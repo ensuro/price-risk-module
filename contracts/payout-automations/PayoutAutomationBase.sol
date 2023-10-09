@@ -112,14 +112,14 @@ abstract contract PayoutAutomationBase is
   }
 
   function onPayoutReceived(
-    address, // operator - ignored
+    address riskModule,
     address, // from - Must be the PolicyPool, ignored too. Not too relevant this parameter
     uint256 tokenId,
     uint256 amount
   ) external virtual override onlyPolicyPool returns (bytes4) {
     address paymentReceiver = ownerOf(tokenId);
     _burn(tokenId);
-    _handlePayout(paymentReceiver, amount);
+    _handlePayout(riskModule, paymentReceiver, amount);
     return IPolicyHolder.onPayoutReceived.selector;
   }
 
@@ -205,5 +205,9 @@ abstract contract PayoutAutomationBase is
     return newPolicy(riskModule, triggerPrice, lower, payout, expiration, onBehalfOf);
   }
 
-  function _handlePayout(address receiver, uint256 amount) internal virtual;
+  function _handlePayout(
+    address riskModule,
+    address receiver,
+    uint256 amount
+  ) internal virtual;
 }
