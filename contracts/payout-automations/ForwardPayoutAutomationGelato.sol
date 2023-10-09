@@ -57,12 +57,8 @@ contract ForwardPayoutAutomationGelato is AutomateTaskCreator, ForwardPayoutAuto
       feeInUSDC < amount,
       "ForwardPayoutAutomationGelato: the payout is not enough to cover the tx fees"
     );
-    require(
-      feeInUSDC < _policyPool.currency().balanceOf(address(this)),
-      "ForwardPayoutAutomationGelato: not enough balance to pay the fee"
-    );
 
-    _policyPool.currency().safeApprove(address(swapRouter), type(uint256).max);
+    _policyPool.currency().safeApprove(address(swapRouter), feeInUSDC);
 
     ISwapRouter.ExactOutputSingleParams memory params = ISwapRouter.ExactOutputSingleParams({
       tokenIn: address(_policyPool.currency()),
@@ -77,6 +73,8 @@ contract ForwardPayoutAutomationGelato is AutomateTaskCreator, ForwardPayoutAuto
 
     // TODO: empty reverts from SwapRouter or WMATIC withdrawal will not revert the tx. Fix the PolicyPool contract!
     uint256 actualFeeInUSDC = swapRouter.exactOutputSingle(params);
+
+    if (actualFeeInUSDC < feeInUSDC) _policyPool.currency().safeApprove(address(swapRouter), 0);
 
     // Convert the WMATIC to MATIC for fee payment
     IWETH9(WMATIC).withdraw(fee);
