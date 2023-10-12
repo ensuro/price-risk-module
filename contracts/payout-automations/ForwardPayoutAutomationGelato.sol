@@ -1,34 +1,49 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {ForwardPayoutAutomation} from "./ForwardPayoutAutomation.sol";
-import {PayoutAutomationBase} from "./PayoutAutomationBase.sol";
-
-import {AutomateTaskCreator} from "../dependencies/gelato-v2/AutomateTaskCreator.sol";
-import {Module, ModuleData} from "../dependencies/gelato-v2/Types.sol";
-
 import {IPolicyPool} from "@ensuro/core/contracts/interfaces/IPolicyPool.sol";
-import {IPriceRiskModule} from "../interfaces/IPriceRiskModule.sol";
-import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
+import {WadRayMath} from "@ensuro/core/contracts/dependencies/WadRayMath.sol";
 
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
 import {TransferHelper} from "@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol";
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
+
+import {AutomateTaskCreator} from "../dependencies/gelato-v2/AutomateTaskCreator.sol";
+import {Module, ModuleData} from "../dependencies/gelato-v2/Types.sol";
 import {IWETH9} from "../dependencies/uniswap-v3/IWETH9.sol";
+
+import {IPriceRiskModule} from "../interfaces/IPriceRiskModule.sol";
+import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
+
+import {ForwardPayoutAutomation} from "./ForwardPayoutAutomation.sol";
+import {PayoutAutomationBase} from "./PayoutAutomationBase.sol";
+
+// import "hardhat/console.sol";
 
 contract ForwardPayoutAutomationGelato is AutomateTaskCreator, ForwardPayoutAutomation {
   using SafeERC20 for IERC20Metadata;
+  using WadRayMath for uint256;
+  using SafeCast for uint256;
 
   uint256 private constant WAD = 1e18;
 
-  // TODO: Will all be in a single parameters struct, should fit neatly in a single slot. Should all be settable.
-  uint256 private constant priceTolerance = 2e16; // 2%
-  ISwapRouter private constant swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
-  address private constant WMATIC = 0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270;
-  uint24 private constant feeTier = 500; // 0.05%
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+  uint256 private immutable _wadToCurrencyFactor;
+
+  struct SwapParams {
+    ISwapRouter swapRouter;
+    uint24 feeTier;
+  }
+
+  SwapParams private swapParams;
+
+  IWETH9 private weth;
+  IPriceOracle private oracle;
+  uint256 private priceTolerance;
 
   /**
    * @param policyPool_ Address of the policy pool
@@ -39,7 +54,24 @@ contract ForwardPayoutAutomationGelato is AutomateTaskCreator, ForwardPayoutAuto
   constructor(IPolicyPool policyPool_, address _automate)
     AutomateTaskCreator(_automate, address(this))
     ForwardPayoutAutomation(policyPool_)
-  {}
+  {
+    _wadToCurrencyFactor = (10**(18 - _policyPool.currency().decimals()));
+  }
+
+  function initialize(
+    string memory name_,
+    string memory symbol_,
+    address admin,
+    IPriceOracle oracle_
+  ) public virtual initializer {
+    __PayoutAutomationBase_init(name_, symbol_, admin);
+
+    oracle = oracle_;
+    swapParams.swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
+    swapParams.feeTier = 500;
+    weth = IWETH9(0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270);
+    priceTolerance = 2e16;
+  }
 
   function _handlePayout(
     address riskModule,
@@ -48,22 +80,21 @@ contract ForwardPayoutAutomationGelato is AutomateTaskCreator, ForwardPayoutAuto
   ) internal override {
     (uint256 fee, address feeToken) = _getFeeDetails();
 
-    uint256 wadToCurrencyFactor = (10**(18 - _policyPool.currency().decimals()));
-    uint256 ethPrice = IPriceRiskModule(riskModule).oracle().getCurrentPrice();
-    uint256 feeInUSDC = (fee * ethPrice) / (WAD * wadToCurrencyFactor);
-    feeInUSDC = (feeInUSDC * (WAD + priceTolerance)) / WAD;
+    uint256 feeInUSDC = (fee.wadMul(oracle.getCurrentPrice()) / _wadToCurrencyFactor).wadMul(
+      WAD + priceTolerance
+    );
 
     require(
       feeInUSDC < amount,
       "ForwardPayoutAutomationGelato: the payout is not enough to cover the tx fees"
     );
 
-    _policyPool.currency().safeApprove(address(swapRouter), feeInUSDC);
+    _policyPool.currency().safeApprove(address(swapParams.swapRouter), feeInUSDC);
 
     ISwapRouter.ExactOutputSingleParams memory params = ISwapRouter.ExactOutputSingleParams({
       tokenIn: address(_policyPool.currency()),
-      tokenOut: WMATIC,
-      fee: feeTier,
+      tokenOut: address(weth),
+      fee: swapParams.feeTier,
       recipient: address(this),
       deadline: block.timestamp,
       amountOut: fee,
@@ -72,12 +103,13 @@ contract ForwardPayoutAutomationGelato is AutomateTaskCreator, ForwardPayoutAuto
     });
 
     // TODO: empty reverts from SwapRouter or WMATIC withdrawal will not revert the tx. Fix the PolicyPool contract!
-    uint256 actualFeeInUSDC = swapRouter.exactOutputSingle(params);
+    uint256 actualFeeInUSDC = swapParams.swapRouter.exactOutputSingle(params);
 
-    if (actualFeeInUSDC < feeInUSDC) _policyPool.currency().safeApprove(address(swapRouter), 0);
+    if (actualFeeInUSDC < feeInUSDC)
+      _policyPool.currency().safeApprove(address(swapParams.swapRouter), 0);
 
     // Convert the WMATIC to MATIC for fee payment
-    IWETH9(WMATIC).withdraw(fee);
+    weth.withdraw(fee);
     _transfer(fee, feeToken);
 
     // Send the rest to the owner

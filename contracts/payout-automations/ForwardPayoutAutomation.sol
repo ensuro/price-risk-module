@@ -13,7 +13,7 @@ contract ForwardPayoutAutomation is PayoutAutomationBase {
   // solhint-disable-next-line no-empty-blocks
   constructor(IPolicyPool policyPool_) PayoutAutomationBase(policyPool_) {}
 
-  function initialize(
+  function initializeAuto(
     string memory name_,
     string memory symbol_,
     address admin

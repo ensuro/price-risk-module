@@ -54,17 +54,23 @@ describe("Test Gelato Task Creation / Execution", function () {
     const { pool, ForwardPayoutAutomationGelato, automate, rm, lp, cust, currency, oracle } = await helpers.loadFixture(
       deployPoolFixture
     );
-    const fpa = await hre.upgrades.deployProxy(ForwardPayoutAutomationGelato, ["The Name", "SYMB", lp.address], {
-      kind: "uups",
-      constructorArgs: [pool.address, automate.address],
-    });
+    const fpa = await hre.upgrades.deployProxy(
+      ForwardPayoutAutomationGelato,
+      ["The Name", "SYMB", lp.address, oracle.address],
+      {
+        kind: "uups",
+        constructorArgs: [pool.address, automate.address],
+      }
+    );
 
     await currency.connect(cust).approve(fpa.address, _A(2000));
 
     const start = await helpers.time.latest();
 
     // Create a new policy
-    const tx = await fpa.connect(cust).newPolicy(rm.address, _W(1400), true, _A(1000), start + HOUR * 24, cust.address);
+    const tx = await fpa
+      .connect(cust)
+      .newPolicy(rm.address, _W("0.6"), true, _A(1000), start + HOUR * 24, cust.address);
 
     // A task was created
     const triggerPolicySelector = rightPaddedFunctionSelector(rm, "triggerPolicy(uint256)");
@@ -86,7 +92,7 @@ describe("Test Gelato Task Creation / Execution", function () {
     expect(canExec).to.be.false;
 
     // When the price drops the check still returns canExec = False because minDuration has not elapsed
-    await oracle.setPrice(_E("1390"));
+    await oracle.setPrice(_E("0.59"));
     const [canExec2] = await fpa.checker(rm.address, makePolicyId(rm.address, 1));
     expect(canExec2).to.be.false;
 
@@ -96,15 +102,17 @@ describe("Test Gelato Task Creation / Execution", function () {
     expect(canExec3).to.be.true;
   });
 
-  it.only("Pays for gelato tx fee when resolving policies", async () => {
+  it("Pays for gelato tx fee when resolving policies", async () => {
     const { pool, ForwardPayoutAutomationGelato, automate, rm, lp, cust, currency, oracle, gelato } =
       await helpers.loadFixture(deployPoolFixture);
-    const fpa = await hre.upgrades.deployProxy(ForwardPayoutAutomationGelato, ["The Name", "SYMB", lp.address], {
-      kind: "uups",
-      constructorArgs: [pool.address, automate.address],
-    });
-    // temporary hack, to be removed once swap is implemented
-    // await helpers.setBalance(fpa.address, _W("1000"));
+    const fpa = await hre.upgrades.deployProxy(
+      ForwardPayoutAutomationGelato,
+      ["The Name", "SYMB", lp.address, oracle.address],
+      {
+        kind: "uups",
+        constructorArgs: [pool.address, automate.address],
+      }
+    );
 
     await currency.connect(cust).approve(fpa.address, _A(2000));
 
