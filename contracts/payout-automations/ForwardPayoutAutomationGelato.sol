@@ -33,6 +33,8 @@ contract ForwardPayoutAutomationGelato is AutomateTaskCreator, ForwardPayoutAuto
 
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   uint256 private immutable _wadToCurrencyFactor;
+  /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
+  IWETH9 private immutable weth;
 
   struct SwapParams {
     ISwapRouter swapRouter;
@@ -41,7 +43,6 @@ contract ForwardPayoutAutomationGelato is AutomateTaskCreator, ForwardPayoutAuto
 
   SwapParams private swapParams;
 
-  IWETH9 private weth;
   IPriceOracle private oracle;
   uint256 private priceTolerance;
 
@@ -51,10 +52,12 @@ contract ForwardPayoutAutomationGelato is AutomateTaskCreator, ForwardPayoutAuto
    */
   /// @custom:oz-upgrades-unsafe-allow constructor
   // solhint-disable-next-line no-empty-blocks
-  constructor(IPolicyPool policyPool_, address _automate)
-    AutomateTaskCreator(_automate, address(this))
-    ForwardPayoutAutomation(policyPool_)
-  {
+  constructor(
+    IPolicyPool policyPool_,
+    address _automate,
+    IWETH9 weth_
+  ) AutomateTaskCreator(_automate, address(this)) ForwardPayoutAutomation(policyPool_) {
+    weth = weth_;
     _wadToCurrencyFactor = (10**(18 - _policyPool.currency().decimals()));
   }
 
@@ -62,15 +65,16 @@ contract ForwardPayoutAutomationGelato is AutomateTaskCreator, ForwardPayoutAuto
     string memory name_,
     string memory symbol_,
     address admin,
-    IPriceOracle oracle_
+    IPriceOracle oracle_,
+    ISwapRouter swapRouter_,
+    uint24 feeTier_
   ) public virtual initializer {
     __PayoutAutomationBase_init(name_, symbol_, admin);
 
     oracle = oracle_;
-    swapParams.swapRouter = ISwapRouter(0xE592427A0AEce92De3Edee1F18E0157C05861564);
-    swapParams.feeTier = 500;
-    weth = IWETH9(0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270);
-    priceTolerance = 2e16;
+    swapParams.swapRouter = swapRouter_;
+    swapParams.feeTier = feeTier_;
+    priceTolerance = 2e16; // 2%
   }
 
   function _handlePayout(

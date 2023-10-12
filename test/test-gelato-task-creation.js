@@ -26,6 +26,7 @@ const ADDRESSES = {
   USDCWhale: "0x4d97dcd97ec945f40cf65f87097ace5ea0476045",
   WMATIC: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
   ETH: "0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE",
+  SwapRouter: "0xE592427A0AEce92De3Edee1F18E0157C05861564",
 };
 
 // enum
@@ -47,21 +48,12 @@ hre.upgrades.silenceWarnings();
 describe("Test Gelato Task Creation / Execution", function () {
   it("ForwardPayoutAutomationGelato can be constructed with policy pool and gelato's address", async () => {
     const { pool, ForwardPayoutAutomationGelato, automate } = await helpers.loadFixture(deployPoolFixture);
-    await expect(ForwardPayoutAutomationGelato.deploy(pool.address, automate.address)).not.to.be.reverted;
+    await expect(ForwardPayoutAutomationGelato.deploy(pool.address, automate.address, ADDRESSES.WMATIC)).not.to.be
+      .reverted;
   });
 
   it("Creates a policy resolution task when a policy is created", async () => {
-    const { pool, ForwardPayoutAutomationGelato, automate, rm, lp, cust, currency, oracle } = await helpers.loadFixture(
-      deployPoolFixture
-    );
-    const fpa = await hre.upgrades.deployProxy(
-      ForwardPayoutAutomationGelato,
-      ["The Name", "SYMB", lp.address, oracle.address],
-      {
-        kind: "uups",
-        constructorArgs: [pool.address, automate.address],
-      }
-    );
+    const { fpa, automate, rm, cust, currency, oracle } = await helpers.loadFixture(deployPoolFixture);
 
     await currency.connect(cust).approve(fpa.address, _A(2000));
 
@@ -103,16 +95,7 @@ describe("Test Gelato Task Creation / Execution", function () {
   });
 
   it("Pays for gelato tx fee when resolving policies", async () => {
-    const { pool, ForwardPayoutAutomationGelato, automate, rm, lp, cust, currency, oracle, gelato } =
-      await helpers.loadFixture(deployPoolFixture);
-    const fpa = await hre.upgrades.deployProxy(
-      ForwardPayoutAutomationGelato,
-      ["The Name", "SYMB", lp.address, oracle.address],
-      {
-        kind: "uups",
-        constructorArgs: [pool.address, automate.address],
-      }
-    );
+    const { pool, fpa, rm, cust, currency, oracle, gelato } = await helpers.loadFixture(deployPoolFixture);
 
     await currency.connect(cust).approve(fpa.address, _A(2000));
 
@@ -203,6 +186,14 @@ async function deployPoolFixture() {
   const automate = await AutomateMock.deploy(gelato.address);
 
   const ForwardPayoutAutomationGelato = await ethers.getContractFactory("ForwardPayoutAutomationGelato");
+  const fpa = await hre.upgrades.deployProxy(
+    ForwardPayoutAutomationGelato,
+    ["The Name", "SYMB", lp.address, oracle.address, ADDRESSES.SwapRouter, _A("0.0005")],
+    {
+      kind: "uups",
+      constructorArgs: [pool.address, automate.address, ADDRESSES.WMATIC],
+    }
+  );
 
   return {
     accessManager,
@@ -211,6 +202,7 @@ async function deployPoolFixture() {
     currency,
     cust,
     ForwardPayoutAutomationGelato,
+    fpa,
     gelato,
     jrEtk,
     lp,
