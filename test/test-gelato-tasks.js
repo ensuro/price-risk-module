@@ -111,11 +111,14 @@ describe("Test Gelato Task Creation / Execution", function () {
     await oracle.setPrice(_W("0.559"));
 
     // Task can now be executed
-    const [canExec] = await fpa.checker(rm.address, makePolicyId(rm.address, 1));
+    const [canExec, payload] = await fpa.checker(rm.address, makePolicyId(rm.address, 1));
     expect(canExec).to.be.true;
 
-    // Gelato triggers the policy (TODO: use the checker payload for this to better simulate gelato)
-    const tx = await rm.triggerPolicy(makePolicyId(rm.address, 1));
+    // Gelato triggers the policy
+    const tx = await rm.connect(gelato).triggerPolicy(makePolicyId(rm.address, 1));
+
+    // TODO: find out why this makes the swap fail
+    // const tx = await gelato.sendTransaction({ to: rm.address, data: payload });
 
     // Sanity check
     await expect(tx).to.emit(pool, "PolicyResolved").withArgs(rm.address, makePolicyId(rm.address, 1), _A(1000));
