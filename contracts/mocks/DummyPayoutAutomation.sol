@@ -19,11 +19,7 @@ contract DummyPayoutAutomation is PayoutAutomationBase {
     __PayoutAutomationBase_init(name_, symbol_, admin);
   }
 
-  function _handlePayout(
-    address, // riskmodule
-    address receiver,
-    uint256 amount
-  ) internal virtual override {
+  function _handlePayout(address receiver, uint256 amount) internal virtual override {
     emit Payout(amount, receiver);
   }
 }

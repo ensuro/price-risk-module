@@ -27,15 +27,11 @@ contract ForwardPayoutAutomation is PayoutAutomationBaseGelato {
     IPriceOracle oracle_,
     ISwapRouter swapRouter_,
     uint24 feeTier_
-  ) public virtual initializer {
+  ) public initializer {
     __PayoutAutomationBaseGelato_init(name_, symbol_, admin, oracle_, swapRouter_, feeTier_);
   }
 
-  function _handlePayout(
-    address, // riskmodule
-    address receiver,
-    uint256 amount
-  ) internal virtual override {
+  function _handlePayout(address receiver, uint256 amount) internal virtual override {
     _policyPool.currency().safeTransfer(receiver, amount);
   }
 }

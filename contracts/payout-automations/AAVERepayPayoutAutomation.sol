@@ -39,11 +39,7 @@ contract AAVERepayPayoutAutomation is PayoutAutomationBase {
     _policyPool.currency().approve(address(_aave), type(uint256).max);
   }
 
-  function _handlePayout(
-    address, // riskModule is not used in this handler
-    address receiver,
-    uint256 amount
-  ) internal override {
+  function _handlePayout(address receiver, uint256 amount) internal override {
     address asset = address(_policyPool.currency());
     DataTypes.ReserveData memory reserveData = _aave.getReserveData(asset);
     uint256 debt = IERC20Metadata(reserveData.variableDebtTokenAddress).balanceOf(receiver);

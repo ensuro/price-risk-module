@@ -66,7 +66,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     IPriceOracle oracle_,
     ISwapRouter swapRouter_,
     uint24 feeTier_
-  ) public virtual onlyInitializing {
+  ) internal onlyInitializing {
     __PayoutAutomationBase_init(name_, symbol_, admin);
     __PayoutAutomationBaseGelato_init_unchained(oracle_, swapRouter_, feeTier_);
   }
@@ -75,7 +75,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     IPriceOracle oracle_,
     ISwapRouter swapRouter_,
     uint24 feeTier_
-  ) public virtual onlyInitializing {
+  ) internal onlyInitializing {
     oracle = oracle_;
     swapParams.swapRouter = swapRouter_;
     swapParams.feeTier = feeTier_;
@@ -83,7 +83,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
   }
 
   function onPayoutReceived(
-    address riskModule,
+    address, // riskModule, ignored
     address, // from - Must be the PolicyPool, ignored too. Not too relevant this parameter
     uint256 tokenId,
     uint256 amount
@@ -91,7 +91,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     address paymentReceiver = ownerOf(tokenId);
     _burn(tokenId);
     uint256 remaining = _payTxFee(amount);
-    _handlePayout(riskModule, paymentReceiver, remaining);
+    _handlePayout(paymentReceiver, remaining);
     return IPolicyHolder.onPayoutReceived.selector;
   }
 
