@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const hre = require("hardhat");
 const { ethers } = hre;
-const { MaxUint256 } = ethers.constants;
+const { MaxUint256, AddressZero } = ethers.constants;
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const { fork } = require("./utils");
@@ -12,6 +12,8 @@ const {
   amountFunction,
   grantComponentRole,
   makePolicyId,
+  grantRole,
+  accessControlMessage,
   getTransactionEvent,
 } = require("@ensuro/core/js/utils");
 const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("@ensuro/core/js/test-utils");
@@ -49,6 +51,115 @@ describe("Test Gelato Task Creation / Execution", function () {
   it("ForwardPayoutAutomation can be constructed with policy pool and gelato's address", async () => {
     const { pool, ForwardPayoutAutomation, automate } = await helpers.loadFixture(deployPoolFixture);
     await expect(ForwardPayoutAutomation.deploy(pool.address, automate.address, ADDRESSES.WMATIC)).not.to.be.reverted;
+
+    await expect(ForwardPayoutAutomation.deploy(pool.address, automate.address, AddressZero)).to.be.revertedWith(
+      "PayoutAutomationBaseGelato: WETH address cannot be zero"
+    );
+  });
+
+  it("Should never allow reinitialization", async () => {
+    const { fpa, lp, oracle } = await helpers.loadFixture(deployPoolFixture);
+
+    await expect(
+      fpa.initialize("Another Name", "SYMB", lp.address, oracle.address, ADDRESSES.SwapRouter, _A("0.0005"))
+    ).to.be.revertedWith("Initializable: contract is already initialized");
+  });
+
+  it("Requires all parameters on initialization", async () => {
+    const { pool, ForwardPayoutAutomation, automate, oracle, admin } = await helpers.loadFixture(deployPoolFixture);
+
+    const fpa = await ForwardPayoutAutomation.deploy(pool.address, automate.address, ADDRESSES.WMATIC);
+    await fpa.deployed();
+
+    await expect(
+      fpa.initialize("The Name", "SYMB", admin.address, AddressZero, ADDRESSES.SwapRouter, _A("0.0005"))
+    ).to.be.revertedWith("PayoutAutomationBaseGelato: oracle address cannot be zero");
+
+    await expect(
+      fpa.initialize("The Name", "SYMB", admin.address, oracle.address, AddressZero, _A("0.0005"))
+    ).to.be.revertedWith("PayoutAutomationBaseGelato: SwapRouter address cannot be zero");
+
+    await expect(
+      fpa.initialize("The Name", "SYMB", admin.address, oracle.address, ADDRESSES.SwapRouter, _A(0))
+    ).to.be.revertedWith("PayoutAutomationBaseGelato: feeTier cannot be zero");
+
+    await expect(fpa.initialize("The Name", "SYMB", admin.address, oracle.address, ADDRESSES.SwapRouter, _A("0.0005")))
+      .to.emit(fpa, "OracleSet")
+      .withArgs(oracle.address)
+      .to.emit(fpa, "SwapRouterSet")
+      .withArgs(ADDRESSES.SwapRouter)
+      .to.emit(fpa, "FeeTierSet")
+      .withArgs(_A("0.0005"))
+      .to.emit(fpa, "PriceToleranceSet")
+      .withArgs(_W("0.02"));
+  });
+
+  it("Allows setting oracle", async () => {
+    const { fpa, oracle, lp, guardian, signers } = await helpers.loadFixture(deployPoolFixture);
+
+    expect(await fpa.oracle()).to.equal(oracle.address);
+    await expect(fpa.connect(lp).setOracle(AddressZero)).to.be.revertedWith(
+      accessControlMessage(lp.address, null, "GUARDIAN_ROLE")
+    );
+
+    await expect(fpa.connect(guardian).setOracle(AddressZero)).to.be.revertedWith(
+      "PayoutAutomationBaseGelato: oracle address cannot be zero"
+    );
+    await expect(fpa.connect(guardian).setOracle(signers[1].address) /* some random address */)
+      .to.emit(fpa, "OracleSet")
+      .withArgs(signers[1].address);
+    expect(await fpa.oracle()).to.equal(signers[1].address);
+  });
+
+  it("Allows setting swap router", async () => {
+    const { fpa, lp, guardian, signers } = await helpers.loadFixture(deployPoolFixture);
+
+    expect(await fpa.swapRouter()).to.equal(ADDRESSES.SwapRouter);
+    await expect(fpa.connect(lp).setSwapRouter(AddressZero)).to.be.revertedWith(
+      accessControlMessage(lp.address, null, "GUARDIAN_ROLE")
+    );
+
+    await expect(fpa.connect(guardian).setSwapRouter(AddressZero)).to.be.revertedWith(
+      "PayoutAutomationBaseGelato: SwapRouter address cannot be zero"
+    );
+    await expect(fpa.connect(guardian).setSwapRouter(signers[1].address) /* some random address */)
+      .to.emit(fpa, "SwapRouterSet")
+      .withArgs(signers[1].address);
+    expect(await fpa.swapRouter()).to.equal(signers[1].address);
+  });
+
+  it("Allows setting feeTier", async () => {
+    const { fpa, lp, guardian } = await helpers.loadFixture(deployPoolFixture);
+
+    expect(await fpa.feeTier()).to.equal(_A("0.0005"));
+    await expect(fpa.connect(lp).setFeeTier(_A(0))).to.be.revertedWith(
+      accessControlMessage(lp.address, null, "GUARDIAN_ROLE")
+    );
+
+    await expect(fpa.connect(guardian).setFeeTier(_A(0))).to.be.revertedWith(
+      "PayoutAutomationBaseGelato: feeTier cannot be zero"
+    );
+    await expect(fpa.connect(guardian).setFeeTier(_A("0.0001")))
+      .to.emit(fpa, "FeeTierSet")
+      .withArgs(_A("0.0001"));
+    expect(await fpa.feeTier()).to.equal(_A("0.0001"));
+  });
+
+  it("Allows setting prceTolerance", async () => {
+    const { fpa, lp, guardian } = await helpers.loadFixture(deployPoolFixture);
+
+    expect(await fpa.priceTolerance()).to.equal(_W("0.02"));
+    await expect(fpa.connect(lp).setPriceTolerance(_W(0))).to.be.revertedWith(
+      accessControlMessage(lp.address, null, "GUARDIAN_ROLE")
+    );
+
+    await expect(fpa.connect(guardian).setPriceTolerance(_W(0))).to.be.revertedWith(
+      "PayoutAutomationBaseGelato: priceTolerance cannot be zero"
+    );
+    await expect(fpa.connect(guardian).setPriceTolerance(_W("0.0001")))
+      .to.emit(fpa, "PriceToleranceSet")
+      .withArgs(_W("0.0001"));
+    expect(await fpa.priceTolerance()).to.equal(_W("0.0001"));
   });
 
   it("Creates a policy resolution task when a policy is created", async () => {
@@ -138,7 +249,7 @@ describe("Test Gelato Task Creation / Execution", function () {
 async function deployPoolFixture() {
   fork(48475972);
 
-  const [owner, lp, cust, gelato, ...signers] = await ethers.getSigners();
+  const [owner, lp, cust, gelato, admin, guardian, ...signers] = await ethers.getSigners();
 
   // TODO: integrate this into ensuro's test-utils
   const currency = await ethers.getContractAt("IERC20", ADDRESSES.USDC, owner);
@@ -190,15 +301,18 @@ async function deployPoolFixture() {
   const ForwardPayoutAutomation = await ethers.getContractFactory("ForwardPayoutAutomation");
   const fpa = await hre.upgrades.deployProxy(
     ForwardPayoutAutomation,
-    ["The Name", "SYMB", lp.address, oracle.address, ADDRESSES.SwapRouter, _A("0.0005")],
+    ["The Name", "SYMB", admin.address, oracle.address, ADDRESSES.SwapRouter, _A("0.0005")],
     {
       kind: "uups",
       constructorArgs: [pool.address, automate.address, ADDRESSES.WMATIC],
     }
   );
 
+  await grantRole(hre, fpa.connect(admin), "GUARDIAN_ROLE", guardian);
+
   return {
     accessManager,
+    admin,
     automate,
     AutomateMock,
     currency,
@@ -206,6 +320,7 @@ async function deployPoolFixture() {
     ForwardPayoutAutomation,
     fpa,
     gelato,
+    guardian,
     jrEtk,
     lp,
     oracle,

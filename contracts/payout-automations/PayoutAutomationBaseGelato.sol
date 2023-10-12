@@ -39,10 +39,15 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     uint24 feeTier;
   }
 
-  SwapParams private swapParams;
+  SwapParams private _swapParams;
 
-  IPriceOracle private oracle;
-  uint256 private priceTolerance;
+  IPriceOracle private _oracle;
+  uint256 private _priceTolerance;
+
+  event OracleSet(IPriceOracle oracle);
+  event SwapRouterSet(ISwapRouter swapRouter);
+  event FeeTierSet(uint24 feeTier);
+  event PriceToleranceSet(uint256 priceTolerance);
 
   /**
    * @param policyPool_ Address of the policy pool
@@ -55,6 +60,10 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     address automate_,
     IWETH9 weth_
   ) AutomateTaskCreator(automate_, address(this)) PayoutAutomationBase(policyPool_) {
+    require(
+      address(weth_) != address(0),
+      "PayoutAutomationBaseGelato: WETH address cannot be zero"
+    );
     weth = weth_;
     _wadToCurrencyFactor = (10**(18 - _policyPool.currency().decimals()));
   }
@@ -76,10 +85,26 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     ISwapRouter swapRouter_,
     uint24 feeTier_
   ) internal onlyInitializing {
-    oracle = oracle_;
-    swapParams.swapRouter = swapRouter_;
-    swapParams.feeTier = feeTier_;
-    priceTolerance = 2e16; // 2%
+    require(
+      address(oracle_) != address(0),
+      "PayoutAutomationBaseGelato: oracle address cannot be zero"
+    );
+    _oracle = oracle_;
+    emit OracleSet(oracle_);
+
+    require(
+      address(swapRouter_) != address(0),
+      "PayoutAutomationBaseGelato: SwapRouter address cannot be zero"
+    );
+    _swapParams.swapRouter = swapRouter_;
+    emit SwapRouterSet(swapRouter_);
+
+    require(feeTier_ > 0, "PayoutAutomationBaseGelato: feeTier cannot be zero");
+    _swapParams.feeTier = feeTier_;
+    emit FeeTierSet(feeTier_);
+
+    _priceTolerance = 2e16; // 2%
+    emit PriceToleranceSet(_priceTolerance);
   }
 
   function onPayoutReceived(
@@ -98,8 +123,8 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
   function _payTxFee(uint256 amount) internal returns (uint256) {
     (uint256 fee, address feeToken) = _getFeeDetails();
 
-    uint256 feeInUSDC = (fee.wadMul(oracle.getCurrentPrice()) / _wadToCurrencyFactor).wadMul(
-      WAD + priceTolerance
+    uint256 feeInUSDC = (fee.wadMul(_oracle.getCurrentPrice()) / _wadToCurrencyFactor).wadMul(
+      WAD + _priceTolerance
     );
 
     require(
@@ -107,12 +132,12 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
       "ForwardPayoutAutomationGelato: the payout is not enough to cover the tx fees"
     );
 
-    _policyPool.currency().safeApprove(address(swapParams.swapRouter), feeInUSDC);
+    _policyPool.currency().safeApprove(address(_swapParams.swapRouter), feeInUSDC);
 
     ISwapRouter.ExactOutputSingleParams memory params = ISwapRouter.ExactOutputSingleParams({
       tokenIn: address(_policyPool.currency()),
       tokenOut: address(weth),
-      fee: swapParams.feeTier,
+      fee: _swapParams.feeTier,
       recipient: address(this),
       deadline: block.timestamp,
       amountOut: fee,
@@ -121,10 +146,10 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     });
 
     // TODO: empty reverts from SwapRouter or WMATIC withdrawal will not revert the tx. Fix the PolicyPool contract!
-    uint256 actualFeeInUSDC = swapParams.swapRouter.exactOutputSingle(params);
+    uint256 actualFeeInUSDC = _swapParams.swapRouter.exactOutputSingle(params);
 
     if (actualFeeInUSDC < feeInUSDC)
-      _policyPool.currency().safeApprove(address(swapParams.swapRouter), 0);
+      _policyPool.currency().safeApprove(address(_swapParams.swapRouter), 0);
 
     // Convert the WMATIC to MATIC for fee payment
     weth.withdraw(fee);
@@ -168,6 +193,54 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
   {
     canExec = riskModule.policyCanBeTriggered(policyId);
     execPayload = abi.encodeCall(riskModule.triggerPolicy, (policyId));
+  }
+
+  function oracle() external view returns (IPriceOracle) {
+    return _oracle;
+  }
+
+  function setOracle(IPriceOracle oracle_) external onlyRole(GUARDIAN_ROLE) {
+    require(
+      address(oracle_) != address(0),
+      "PayoutAutomationBaseGelato: oracle address cannot be zero"
+    );
+    _oracle = oracle_;
+
+    emit OracleSet(oracle_);
+  }
+
+  function swapRouter() external view returns (ISwapRouter) {
+    return _swapParams.swapRouter;
+  }
+
+  function setSwapRouter(ISwapRouter swapRouter_) external onlyRole(GUARDIAN_ROLE) {
+    require(
+      address(swapRouter_) != address(0),
+      "PayoutAutomationBaseGelato: SwapRouter address cannot be zero"
+    );
+    _swapParams.swapRouter = swapRouter_;
+
+    emit SwapRouterSet(swapRouter_);
+  }
+
+  function feeTier() external view returns (uint24) {
+    return _swapParams.feeTier;
+  }
+
+  function setFeeTier(uint24 feeTier_) external onlyRole(GUARDIAN_ROLE) {
+    require(feeTier_ > 0, "PayoutAutomationBaseGelato: feeTier cannot be zero");
+    _swapParams.feeTier = feeTier_;
+    emit FeeTierSet(feeTier_);
+  }
+
+  function priceTolerance() external view returns (uint256) {
+    return _priceTolerance;
+  }
+
+  function setPriceTolerance(uint256 priceTolerance_) external onlyRole(GUARDIAN_ROLE) {
+    require(priceTolerance_ > 0, "PayoutAutomationBaseGelato: priceTolerance cannot be zero");
+    _priceTolerance = priceTolerance_;
+    emit PriceToleranceSet(priceTolerance_);
   }
 
   // Need to receive gas tokens when unwrapping. TODO: add amount validation to ensure no tokens are ever kept in this contract?
