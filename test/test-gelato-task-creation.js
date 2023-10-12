@@ -46,10 +46,9 @@ function rightPaddedFunctionSelector(contract, signature) {
 hre.upgrades.silenceWarnings();
 
 describe("Test Gelato Task Creation / Execution", function () {
-  it("ForwardPayoutAutomationGelato can be constructed with policy pool and gelato's address", async () => {
-    const { pool, ForwardPayoutAutomationGelato, automate } = await helpers.loadFixture(deployPoolFixture);
-    await expect(ForwardPayoutAutomationGelato.deploy(pool.address, automate.address, ADDRESSES.WMATIC)).not.to.be
-      .reverted;
+  it("ForwardPayoutAutomation can be constructed with policy pool and gelato's address", async () => {
+    const { pool, ForwardPayoutAutomation, automate } = await helpers.loadFixture(deployPoolFixture);
+    await expect(ForwardPayoutAutomation.deploy(pool.address, automate.address, ADDRESSES.WMATIC)).not.to.be.reverted;
   });
 
   it("Creates a policy resolution task when a policy is created", async () => {
@@ -185,9 +184,9 @@ async function deployPoolFixture() {
   const AutomateMock = await ethers.getContractFactory("AutomateMock");
   const automate = await AutomateMock.deploy(gelato.address);
 
-  const ForwardPayoutAutomationGelato = await ethers.getContractFactory("ForwardPayoutAutomationGelato");
+  const ForwardPayoutAutomation = await ethers.getContractFactory("ForwardPayoutAutomation");
   const fpa = await hre.upgrades.deployProxy(
-    ForwardPayoutAutomationGelato,
+    ForwardPayoutAutomation,
     ["The Name", "SYMB", lp.address, oracle.address, ADDRESSES.SwapRouter, _A("0.0005")],
     {
       kind: "uups",
@@ -201,7 +200,7 @@ async function deployPoolFixture() {
     AutomateMock,
     currency,
     cust,
-    ForwardPayoutAutomationGelato,
+    ForwardPayoutAutomation,
     fpa,
     gelato,
     jrEtk,

@@ -30,16 +30,16 @@ describe("Test PayoutAutomationBase contract", function () {
   });
 
   it("Should fail if constructed with null address ", async () => {
-    const { pool, ForwardPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
-    await expect(ForwardPayoutAutomation.deploy(AddressZero)).to.be.revertedWith(
+    const { pool, DummyPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
+    await expect(DummyPayoutAutomation.deploy(AddressZero)).to.be.revertedWith(
       "PayoutAutomationBase: policyPool_ cannot be the zero address"
     );
-    await expect(ForwardPayoutAutomation.deploy(pool.address)).not.to.be.reverted;
+    await expect(DummyPayoutAutomation.deploy(pool.address)).not.to.be.reverted;
   });
 
   it("Should never allow reinitialization", async () => {
-    const { pool, ForwardPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", lp.address], {
+    const { pool, DummyPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
+    const fps = await hre.upgrades.deployProxy(DummyPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
@@ -50,8 +50,8 @@ describe("Test PayoutAutomationBase contract", function () {
   });
 
   it("Shouldn't be administrable if created without admin", async () => {
-    const { pool, ForwardPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", AddressZero], {
+    const { pool, DummyPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
+    const fps = await hre.upgrades.deployProxy(DummyPayoutAutomation, ["The Name", "SYMB", AddressZero], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
@@ -62,13 +62,13 @@ describe("Test PayoutAutomationBase contract", function () {
   });
 
   it("Should be upgradeable only by GUARDIAN_ROLE", async () => {
-    const { pool, ForwardPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", owner.address], {
+    const { pool, DummyPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
+    const fps = await hre.upgrades.deployProxy(DummyPayoutAutomation, ["The Name", "SYMB", owner.address], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
     await grantRole(hre, fps.connect(owner), "GUARDIAN_ROLE", lp);
-    const newImpl = await ForwardPayoutAutomation.deploy(pool.address);
+    const newImpl = await DummyPayoutAutomation.deploy(pool.address);
 
     await expect(fps.connect(cust).upgradeTo(newImpl.address)).to.be.revertedWith(
       accessControlMessage(cust.address, null, "GUARDIAN_ROLE")
@@ -78,8 +78,8 @@ describe("Test PayoutAutomationBase contract", function () {
   });
 
   it("Should check event methods are only callable by the pool", async () => {
-    const { pool, ForwardPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", AddressZero], {
+    const { pool, DummyPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
+    const fps = await hre.upgrades.deployProxy(DummyPayoutAutomation, ["The Name", "SYMB", AddressZero], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
@@ -98,8 +98,8 @@ describe("Test PayoutAutomationBase contract", function () {
   });
 
   it("Should initialize with name and symbol and permission granted to admin", async () => {
-    const { pool, ForwardPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", lp.address], {
+    const { pool, DummyPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
+    const fps = await hre.upgrades.deployProxy(DummyPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
@@ -111,8 +111,8 @@ describe("Test PayoutAutomationBase contract", function () {
   });
 
   it("Should support the expected interfaces", async () => {
-    const { pool, ForwardPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", lp.address], {
+    const { pool, DummyPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
+    const fps = await hre.upgrades.deployProxy(DummyPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
@@ -134,9 +134,9 @@ describe("Test PayoutAutomationBase contract", function () {
   });
 
   it("Should mint an NFT if receiving a policy, and should burn it if recovered", async () => {
-    const { pool, ForwardPayoutAutomation, rm } = await helpers.loadFixture(deployPoolFixture);
+    const { pool, DummyPayoutAutomation, rm } = await helpers.loadFixture(deployPoolFixture);
     const start = await helpers.time.latest();
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", lp.address], {
+    const fps = await hre.upgrades.deployProxy(DummyPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
@@ -171,9 +171,9 @@ describe("Test PayoutAutomationBase contract", function () {
   });
 
   it("Should mint an NFT if receiving a policy, and receive the payout if triggered", async () => {
-    const { pool, ForwardPayoutAutomation, rm, oracle, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { pool, DummyPayoutAutomation, rm, oracle } = await helpers.loadFixture(deployPoolFixture);
     const start = await helpers.time.latest();
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", lp.address], {
+    const fps = await hre.upgrades.deployProxy(DummyPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
@@ -207,7 +207,7 @@ describe("Test PayoutAutomationBase contract", function () {
 
     await helpers.time.increase(HOUR);
     await oracle.setPrice(_E("1390"));
-    await expect(() => rm.triggerPolicy(policyId)).to.changeTokenBalance(currency, cust, _A(1000));
+    await expect(rm.triggerPolicy(policyId)).to.emit(fps, "Payout").withArgs(_A(1000), cust.address);
 
     expect(await fps.balanceOf(cust.address)).to.be.equal(1);
 
@@ -226,9 +226,9 @@ describe("Test PayoutAutomationBase contract", function () {
   });
 
   it("Can create the policy through the FPS and works the same way", async () => {
-    const { pool, ForwardPayoutAutomation, rm, oracle, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { pool, DummyPayoutAutomation, rm, oracle, currency } = await helpers.loadFixture(deployPoolFixture);
     const start = await helpers.time.latest();
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", lp.address], {
+    const fps = await hre.upgrades.deployProxy(DummyPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
@@ -265,7 +265,7 @@ describe("Test PayoutAutomationBase contract", function () {
 
     await helpers.time.increase(HOUR);
     await oracle.setPrice(_E("1390"));
-    await expect(() => rm.triggerPolicy(policyId)).to.changeTokenBalance(currency, cust, _A(1000));
+    await expect(rm.triggerPolicy(policyId)).to.emit(fps, "Payout").withArgs(_A(1000), cust.address);
 
     await helpers.time.increase(HOUR * 24);
     const policy2 = (await rm.getPolicyData(policyId2))[0];
@@ -280,9 +280,9 @@ describe("Test PayoutAutomationBase contract", function () {
   });
 
   it("Can create the policy through the FPS using permit", async () => {
-    const { pool, ForwardPayoutAutomation, rm, oracle, currency } = await helpers.loadFixture(deployPoolFixture);
+    const { pool, DummyPayoutAutomation, rm, oracle, currency } = await helpers.loadFixture(deployPoolFixture);
     const start = await helpers.time.latest();
-    const fps = await hre.upgrades.deployProxy(ForwardPayoutAutomation, ["The Name", "SYMB", lp.address], {
+    const fps = await hre.upgrades.deployProxy(DummyPayoutAutomation, ["The Name", "SYMB", lp.address], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
@@ -440,7 +440,7 @@ describe("Test PayoutAutomationBase contract", function () {
 
     await helpers.time.increase(HOUR);
     await oracle.setPrice(_E("1390"));
-    await expect(() => rm.triggerPolicy(policyId)).to.changeTokenBalance(currency, cust, _A(1000));
+    await expect(rm.triggerPolicy(policyId)).to.emit(fps, "Payout").withArgs(_A(1000), cust.address);
 
     await helpers.time.increase(HOUR * 24);
     const policy2 = (await rm.getPolicyData(policyId2))[0];
@@ -579,7 +579,7 @@ describe("Test PayoutAutomationBase contract", function () {
     const newCdf = Array(await rm.PRICE_SLOTS()).fill([_W("0.01"), _W("0.05"), _W("1.0")]);
     await rm.setCDF(24, newCdf);
 
-    const ForwardPayoutAutomation = await ethers.getContractFactory("ForwardPayoutAutomation");
+    const DummyPayoutAutomation = await ethers.getContractFactory("DummyPayoutAutomation");
 
     return {
       pool,
@@ -592,7 +592,7 @@ describe("Test PayoutAutomationBase contract", function () {
       oracle,
       PriceRiskModule,
       PriceOracleMock,
-      ForwardPayoutAutomation,
+      DummyPayoutAutomation,
     };
   }
 });
