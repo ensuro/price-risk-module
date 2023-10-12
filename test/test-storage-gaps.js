@@ -5,11 +5,21 @@ const hre = require("hardhat");
 const { getStorageLayout } = require("@ensuro/core/js/utils");
 
 describe("Storage Gaps", () => {
-  const contracts = ["PriceRiskModule"];
+  const contracts = [
+    "PriceRiskModule",
+    "payout-automations/PayoutAutomationBase",
+    "payout-automations/PayoutAutomationBaseGelato",
+    "payout-automations/ForwardPayoutAutomation",
+    "payout-automations/AAVERepayPayoutAutomation",
+  ];
 
   for (const contract of contracts) {
     it(`${contract} has a proper storage gap`, async () => {
-      const { storage, types } = await getStorageLayout(hre, `contracts/${contract}.sol`, contract);
+      const { storage, types } = await getStorageLayout(
+        hre,
+        `contracts/${contract}.sol`,
+        contract.split("/").slice(-1)[0]
+      );
 
       const gap = storage[storage.length - 1];
 
