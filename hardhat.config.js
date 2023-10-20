@@ -2,6 +2,7 @@ require("@nomicfoundation/hardhat-toolbox");
 require("@openzeppelin/hardhat-upgrades");
 require("hardhat-dependency-compiler");
 require("hardhat-contract-sizer");
+require("hardhat-gas-reporter");
 require("solidity-coverage");
 
 /** @type import('hardhat/config').HardhatUserConfig */
@@ -28,5 +29,10 @@ module.exports = {
       "@ensuro/core/contracts/EToken.sol",
       "@ensuro/core/contracts/mocks/TestCurrency.sol",
     ],
+  },
+  gasReporter: {
+    currency: "USD",
+    coinmarketcap: "1b0c87b0-c123-48d1-86f9-1544ef487220",
+    enabled: process.env.REPORT_GAS !== undefined,
   },
 };

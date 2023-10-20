@@ -5,6 +5,7 @@ const { AddressZero, MaxUint256 } = ethers.constants;
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { _W, _E, amountFunction, grantComponentRole, makePolicyId } = require("@ensuro/core/js/utils");
 const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("@ensuro/core/js/test-utils");
+const { fork } = require("./utils");
 
 const HOUR = 3600;
 
@@ -246,18 +247,7 @@ describe("Test AAVE payout automation contracts", function () {
   }
 
   async function deployPoolFixture() {
-    if (process.env.ALCHEMY_URL === undefined) throw new Error("Define envvar ALCHEMY_URL for this test");
-    await hre.network.provider.request({
-      method: "hardhat_reset",
-      params: [
-        {
-          forking: {
-            jsonRpcUrl: process.env.ALCHEMY_URL,
-            blockNumber: 47719249, // polygon mainnet
-          },
-        },
-      ],
-    });
+    fork(47719249);
 
     await helpers.impersonateAccount(ADDRESSES.usrUSDC);
     await helpers.setBalance(ADDRESSES.usrUSDC, 100n ** 18n);

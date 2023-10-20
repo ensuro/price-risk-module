@@ -2,21 +2,24 @@
 pragma solidity ^0.8.0;
 
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 import {AddressUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
+import {ERC721EnumerableUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
+import {IERC165Upgradeable} from "@openzeppelin/contracts-upgradeable/interfaces/IERC165Upgradeable.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
-import {IERC165Upgradeable} from "@openzeppelin/contracts-upgradeable/interfaces/IERC165Upgradeable.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {ERC721EnumerableUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol";
-import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
-import {IPriceRiskModule} from "../interfaces/IPriceRiskModule.sol";
-import {IPayoutAutomation} from "../interfaces/IPayoutAutomation.sol";
-import {IPolicyPool} from "@ensuro/core/contracts/interfaces/IPolicyPool.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+
 import {IPolicyHolder} from "@ensuro/core/contracts/interfaces/IPolicyHolder.sol";
+import {IPolicyPool} from "@ensuro/core/contracts/interfaces/IPolicyPool.sol";
+
+import {IPayoutAutomation} from "../interfaces/IPayoutAutomation.sol";
+import {IPriceRiskModule} from "../interfaces/IPriceRiskModule.sol";
 
 /**
  * @title PayoutAutomationBase
@@ -94,6 +97,7 @@ abstract contract PayoutAutomationBase is
     return
       AccessControlUpgradeable.supportsInterface(interfaceId) ||
       ERC721EnumerableUpgradeable.supportsInterface(interfaceId) ||
+      interfaceId == type(IPayoutAutomation).interfaceId ||
       interfaceId == type(IPolicyHolder).interfaceId;
   }
 
@@ -103,7 +107,7 @@ abstract contract PayoutAutomationBase is
     address from,
     uint256 tokenId,
     bytes calldata data
-  ) external override onlyPolicyPool returns (bytes4) {
+  ) external virtual override onlyPolicyPool returns (bytes4) {
     if (from != address(0)) {
       // I'm receiving a transfer, so I mint a token to the sender
       _safeMint(from, tokenId, data);
@@ -112,11 +116,11 @@ abstract contract PayoutAutomationBase is
   }
 
   function onPayoutReceived(
-    address, // operator - ignored
+    address, // riskModule, ignored
     address, // from - Must be the PolicyPool, ignored too. Not too relevant this parameter
     uint256 tokenId,
     uint256 amount
-  ) external override onlyPolicyPool returns (bytes4) {
+  ) external virtual override onlyPolicyPool returns (bytes4) {
     address paymentReceiver = ownerOf(tokenId);
     _burn(tokenId);
     _handlePayout(paymentReceiver, amount);
@@ -127,7 +131,7 @@ abstract contract PayoutAutomationBase is
     address,
     address,
     uint256 tokenId
-  ) external override onlyPolicyPool returns (bytes4) {
+  ) external virtual override onlyPolicyPool returns (bytes4) {
     // We don't do anything for now, in the future perhaps we can implement auto-renew.
     _burn(tokenId);
     return IPolicyHolder.onPolicyExpired.selector;
@@ -206,4 +210,11 @@ abstract contract PayoutAutomationBase is
   }
 
   function _handlePayout(address receiver, uint256 amount) internal virtual;
+
+  /**
+   * @dev This empty reserved space is put in place to allow future versions to add new
+   * variables without shifting down storage in the inheritance chain.
+   * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
+   */
+  uint256[50] private __gap;
 }

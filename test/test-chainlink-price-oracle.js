@@ -4,13 +4,11 @@ const { ethers } = hre;
 const { AddressZero } = ethers.constants;
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { _E, _W, amountFunction } = require("@ensuro/core/js/utils");
+const { forkIt } = require("./utils");
 
 const HOUR = 3600;
 
 hre.upgrades.silenceWarnings();
-
-const skipForkTests = process.env.SKIP_FORK_TESTS === "true";
-const forkIt = skipForkTests ? it.skip : it;
 
 describe("Test PriceRiskModule contract", function () {
   const _A = amountFunction(6);

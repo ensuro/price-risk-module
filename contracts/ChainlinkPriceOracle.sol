@@ -69,7 +69,7 @@ contract ChainlinkPriceOracle is IPriceOracle {
    *         If referenceOracle() == address(0), returns the price of the asset expressed in the denomination of
    *         assetOracle(), in Wad (18 decimals)
    */
-  function getCurrentPrice() public view override returns (uint256) {
+  function getCurrentPrice() public view virtual override returns (uint256) {
     if (address(_referenceOracle) == address(0)) {
       return _scalePrice(_getLatestPrice(_assetOracle), _assetOracle.decimals(), WAD_DECIMALS);
     } else {

@@ -146,7 +146,7 @@ module.exports = {
     "no-underscore-dangle": "off",
     "no-unmodified-loop-condition": "error",
     "no-unneeded-ternary": "error",
-    "no-unused-expressions": "error",
+    "no-unused-expressions": "off", // not compatible with chai matchers
     "no-useless-call": "error",
     "no-useless-catch": "error",
     "no-useless-computed-key": "error",

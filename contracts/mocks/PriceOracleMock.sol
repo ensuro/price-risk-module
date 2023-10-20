@@ -10,12 +10,12 @@ contract PriceOracleMock is IPriceOracle {
     _price = price;
   }
 
-  function getCurrentPrice() external view override returns (uint256) {
+  function getCurrentPrice() public view virtual override returns (uint256) {
     // require(_price != 0, "Error, price can't be zero");
     return _price;
   }
 
-  function setPrice(uint256 price_) external {
+  function setPrice(uint256 price_) external virtual {
     _price = price_;
   }
 }
