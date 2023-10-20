@@ -122,6 +122,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
 
   function _payTxFee(uint256 amount) internal returns (uint256) {
     (uint256 fee, address feeToken) = _getFeeDetails();
+    require(feeToken == ETH, "Unsupported feeToken for gelato payment");
 
     uint256 feeInUSDC = (fee.wadMul(_oracle.getCurrentPrice()) / _wadToCurrencyFactor).wadMul(
       WAD + _priceTolerance
