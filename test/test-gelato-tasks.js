@@ -184,7 +184,7 @@ describe("Test Gelato Task Creation / Execution", function () {
     const triggerPolicySelector = rightPaddedFunctionSelector(rm, "triggerPolicy(uint256)");
     await expect(tx)
       .to.emit(automate, "TaskCreated")
-      .withArgs(rm.address, triggerPolicySelector, anyValue, ADDRESSES.ETH);
+      .withArgs(anyValue, rm.address, triggerPolicySelector, anyValue, ADDRESSES.ETH);
 
     // Workaround broken struct match - https://github.com/NomicFoundation/hardhat/issues/3833
     const receipt = await tx.wait();
@@ -193,7 +193,7 @@ describe("Test Gelato Task Creation / Execution", function () {
       ["address", "bytes"],
       [fpa.address, fpa.interface.encodeFunctionData("checker", [rm.address, makePolicyId(rm.address, 1)])]
     );
-    expect(event.args[2]).to.deep.equal([[Module.RESOLVER], [resolverArgs]]);
+    expect(event.args[3]).to.deep.equal([[Module.RESOLVER], [resolverArgs]]);
 
     // The check for the task returns canExec = False
     const [canExec] = await fpa.checker(rm.address, makePolicyId(rm.address, 1));
@@ -211,7 +211,7 @@ describe("Test Gelato Task Creation / Execution", function () {
   });
 
   it("Pays for gelato tx fee when resolving policies", async () => {
-    const { pool, fpa, rm, cust, currency, oracle, gelato } = await helpers.loadFixture(deployPoolFixture);
+    const { pool, fpa, rm, cust, currency, oracle, gelato, automate } = await helpers.loadFixture(deployPoolFixture);
 
     await currency.connect(cust).approve(fpa.address, _A(2000));
 
@@ -221,7 +221,10 @@ describe("Test Gelato Task Creation / Execution", function () {
     await oracle.setPrice(_W("0.62"));
 
     // Create a new policy that triggers under $0.57
-    await fpa.connect(cust).newPolicy(rm.address, _W("0.57"), true, _A(1000), start + HOUR * 24, cust.address);
+    const creationTx = await fpa
+      .connect(cust)
+      .newPolicy(rm.address, _W("0.57"), true, _A(1000), start + HOUR * 24, cust.address);
+    const taskCreatedEvent = await getTransactionEvent(automate.interface, await creationTx.wait(), "TaskCreated");
 
     // Price drops below trigger price
     await helpers.time.increase(HOUR);
@@ -243,7 +246,8 @@ describe("Test Gelato Task Creation / Execution", function () {
     // The rest of the payout was transferred to the policy holder
     await expect(tx).to.changeTokenBalance(currency, cust, _A("999.992491") /* $1000 payout - $0.007509 fee */);
 
-    // TODO: Task should be cancelled after this
+    // The task was removed from gelato
+    await expect(tx).to.emit(automate, "TaskCancelled").withArgs(taskCreatedEvent.args.taskId, fpa.address);
   });
 });
 

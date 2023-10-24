@@ -44,6 +44,8 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
   IPriceOracle private _oracle;
   uint256 private _priceTolerance;
 
+  mapping(uint256 => bytes32) private _taskIds;
+
   event OracleSet(IPriceOracle oracle);
   event SwapRouterSet(ISwapRouter swapRouter);
   event FeeTierSet(uint24 feeTier);
@@ -115,6 +117,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
   ) external virtual override onlyPolicyPool returns (bytes4) {
     address paymentReceiver = ownerOf(tokenId);
     _burn(tokenId);
+    _cancelTask(_taskIds[tokenId]);
     uint256 remaining = _payTxFee(amount);
     _handlePayout(paymentReceiver, remaining);
     return IPolicyHolder.onPayoutReceived.selector;
@@ -171,7 +174,6 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     address onBehalfOf
   ) public virtual override returns (uint256 policyId) {
     policyId = super.newPolicy(riskModule, triggerPrice, lower, payout, expiration, onBehalfOf);
-
     ModuleData memory moduleData = ModuleData({modules: new Module[](1), args: new bytes[](1)});
     moduleData.modules[0] = Module.RESOLVER;
     moduleData.args[0] = _resolverModuleArg(
@@ -179,7 +181,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
       abi.encodeCall(this.checker, (riskModule, policyId))
     );
 
-    _createTask(
+    _taskIds[policyId] = _createTask(
       address(riskModule),
       abi.encode(riskModule.triggerPolicy.selector),
       moduleData,
@@ -252,5 +254,5 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
    * variables without shifting down storage in the inheritance chain.
    * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
    */
-  uint256[47] private __gap;
+  uint256[46] private __gap;
 }
