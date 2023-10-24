@@ -4,19 +4,27 @@ const { ethers } = hre;
 const { MaxUint256, AddressZero } = ethers.constants;
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
-const { fork } = require("./utils");
 
 const {
-  _W,
   _E,
-  amountFunction,
-  grantComponentRole,
-  makePolicyId,
-  grantRole,
+  _W,
   accessControlMessage,
+  amountFunction,
   getTransactionEvent,
+  grantComponentRole,
+  grantRole,
+  makePolicyId,
 } = require("@ensuro/core/js/utils");
-const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("@ensuro/core/js/test-utils");
+const {
+  addEToken,
+  addRiskModule,
+  deployPool,
+  deployPremiumsAccount,
+  initForkCurrency,
+  setupChain,
+} = require("@ensuro/core/js/test-utils");
+
+const { HOUR } = require("@ensuro/core/js/constants");
 
 const CURRENCY_DECIMALS = 6;
 const _A = amountFunction(CURRENCY_DECIMALS);
@@ -38,8 +46,6 @@ const Module = {
   PROXY: 2,
   SINGLE_EXEC: 3,
 };
-
-const HOUR = 3600;
 
 function rightPaddedFunctionSelector(contract, signature) {
   return ethers.BigNumber.from(contract.interface.getSighash(signature)).shl(256 - 32);
@@ -226,10 +232,7 @@ describe("Test Gelato Task Creation / Execution", function () {
     expect(canExec).to.be.true;
 
     // Gelato triggers the policy
-    const tx = await rm.connect(gelato).triggerPolicy(makePolicyId(rm.address, 1));
-
-    // TODO: find out why this makes the swap fail
-    // const tx = await gelato.sendTransaction({ to: rm.address, data: payload });
+    const tx = await gelato.sendTransaction({ to: rm.address, data: payload });
 
     // Sanity check
     await expect(tx).to.emit(pool, "PolicyResolved").withArgs(rm.address, makePolicyId(rm.address, 1), _A(1000));
@@ -247,17 +250,11 @@ describe("Test Gelato Task Creation / Execution", function () {
 // TODO: task cancelation on expiration
 
 async function deployPoolFixture() {
-  fork(48475972);
+  setupChain(48475972);
 
   const [owner, lp, cust, gelato, admin, guardian, ...signers] = await ethers.getSigners();
 
-  // TODO: integrate this into ensuro's test-utils
-  const currency = await ethers.getContractAt("IERC20", ADDRESSES.USDC, owner);
-  await helpers.impersonateAccount(ADDRESSES.USDCWhale);
-  await helpers.setBalance(ADDRESSES.USDCWhale, ethers.utils.parseEther("100"));
-  const whale = await ethers.getSigner(ADDRESSES.USDCWhale);
-  await currency.connect(whale).transfer(lp.address, _A("8000"));
-  await currency.connect(whale).transfer(cust.address, _A("500"));
+  const currency = await initForkCurrency(ADDRESSES.USDC, ADDRESSES.USDCWhale, [lp, cust], [_A("8000"), _A("500")]);
 
   const pool = await deployPool({
     currency: currency.address,
