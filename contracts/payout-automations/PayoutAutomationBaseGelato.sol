@@ -41,9 +41,19 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
 
   SwapParams private _swapParams;
 
+  /**
+   * @dev Oracle for the price of gas tokens in the currency of the policy pool
+   */
   IPriceOracle private _oracle;
+
+  /**
+   * @dev Tolerance, in percentage Wad, for price slippage when swapping currency for gas tokens
+   */
   uint256 private _priceTolerance;
 
+  /**
+   * @dev Mapping from policyId to taskIds
+   */
   mapping(uint256 => bytes32) private _taskIds;
 
   event OracleSet(IPriceOracle oracle);
@@ -110,6 +120,9 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     emit PriceToleranceSet(_priceTolerance);
   }
 
+  /**
+   * @inheritdoc IPolicyHolder
+   */
   function onPayoutReceived(
     address, // riskModule, ignored
     address, // from - Must be the PolicyPool, ignored too. Not too relevant this parameter
@@ -124,6 +137,9 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     return IPolicyHolder.onPayoutReceived.selector;
   }
 
+  /**
+   * @inheritdoc IPolicyHolder
+   */
   function onPolicyExpired(
     address,
     address,
@@ -134,6 +150,11 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     return IPolicyHolder.onPolicyExpired.selector;
   }
 
+  /**
+   * @dev Pay gelato for the transaction fee
+   * @param amount The payout amount that was received
+   * @return The remaining amount after paying the transaction fee
+   */
   function _payTxFee(uint256 amount) internal returns (uint256) {
     (uint256 fee, address feeToken) = _getFeeDetails();
     require(feeToken == ETH, "Unsupported feeToken for gelato payment");
@@ -200,6 +221,13 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     );
   }
 
+  /**
+   *
+   * @dev Checks if the resolution task for a given policy can be executed
+   * @return canExec true only if the policy can be triggered
+   * @return execPayload ABI encoded call data to trigger the policy.
+   *                     Notice that the contract that will be called was defined on task creation.
+   */
   function checker(IPriceRiskModule riskModule, uint256 policyId)
     external
     view
