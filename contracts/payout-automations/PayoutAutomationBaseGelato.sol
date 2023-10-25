@@ -156,11 +156,16 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
       deadline: block.timestamp,
       amountOut: fee,
       amountInMaximum: feeInUSDC,
-      sqrtPriceLimitX96: 0 // TODO: Calculate price limit
+      sqrtPriceLimitX96: 0 // Since we're limiting the transfer amount, we don't need to worry about the price impact of the transaction
     });
 
-    // TODO: empty reverts from SwapRouter or WMATIC withdrawal will not revert the tx. Fix the PolicyPool contract!
     uint256 actualFeeInUSDC = _swapParams.swapRouter.exactOutputSingle(params);
+
+    // Sanity check
+    require(
+      actualFeeInUSDC <= feeInUSDC,
+      "ForwardPayoutAutomationGelato: exchange rate higher than tolerable"
+    );
 
     if (actualFeeInUSDC < feeInUSDC)
       _policyPool.currency().safeApprove(address(_swapParams.swapRouter), 0);
@@ -256,7 +261,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     emit PriceToleranceSet(priceTolerance_);
   }
 
-  // Need to receive gas tokens when unwrapping. TODO: add amount validation to ensure no tokens are ever kept in this contract?
+  // Need to receive gas tokens when unwrapping.
   receive() external payable {}
 
   /**
