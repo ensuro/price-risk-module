@@ -4,19 +4,27 @@ const { ethers } = hre;
 const { MaxUint256, AddressZero } = ethers.constants;
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
-const { fork } = require("./utils");
 
 const {
-  _W,
   _E,
-  amountFunction,
-  grantComponentRole,
-  makePolicyId,
-  grantRole,
+  _W,
   accessControlMessage,
+  amountFunction,
   getTransactionEvent,
+  grantComponentRole,
+  grantRole,
+  makePolicyId,
 } = require("@ensuro/core/js/utils");
-const { deployPool, deployPremiumsAccount, addRiskModule, addEToken } = require("@ensuro/core/js/test-utils");
+const {
+  addEToken,
+  addRiskModule,
+  deployPool,
+  deployPremiumsAccount,
+  initForkCurrency,
+  setupChain,
+} = require("@ensuro/core/js/test-utils");
+
+const { HOUR } = require("@ensuro/core/js/constants");
 
 const CURRENCY_DECIMALS = 6;
 const _A = amountFunction(CURRENCY_DECIMALS);
@@ -38,8 +46,6 @@ const Module = {
   PROXY: 2,
   SINGLE_EXEC: 3,
 };
-
-const HOUR = 3600;
 
 function rightPaddedFunctionSelector(contract, signature) {
   return ethers.BigNumber.from(contract.interface.getSighash(signature)).shl(256 - 32);
@@ -178,7 +184,7 @@ describe("Test Gelato Task Creation / Execution", function () {
     const triggerPolicySelector = rightPaddedFunctionSelector(rm, "triggerPolicy(uint256)");
     await expect(tx)
       .to.emit(automate, "TaskCreated")
-      .withArgs(rm.address, triggerPolicySelector, anyValue, ADDRESSES.ETH);
+      .withArgs(anyValue, rm.address, triggerPolicySelector, anyValue, ADDRESSES.ETH);
 
     // Workaround broken struct match - https://github.com/NomicFoundation/hardhat/issues/3833
     const receipt = await tx.wait();
@@ -187,7 +193,7 @@ describe("Test Gelato Task Creation / Execution", function () {
       ["address", "bytes"],
       [fpa.address, fpa.interface.encodeFunctionData("checker", [rm.address, makePolicyId(rm.address, 1)])]
     );
-    expect(event.args[2]).to.deep.equal([[Module.RESOLVER], [resolverArgs]]);
+    expect(event.args[3]).to.deep.equal([[Module.RESOLVER], [resolverArgs]]);
 
     // The check for the task returns canExec = False
     const [canExec] = await fpa.checker(rm.address, makePolicyId(rm.address, 1));
@@ -205,7 +211,7 @@ describe("Test Gelato Task Creation / Execution", function () {
   });
 
   it("Pays for gelato tx fee when resolving policies", async () => {
-    const { pool, fpa, rm, cust, currency, oracle, gelato } = await helpers.loadFixture(deployPoolFixture);
+    const { pool, fpa, rm, cust, currency, oracle, gelato, automate } = await helpers.loadFixture(deployPoolFixture);
 
     await currency.connect(cust).approve(fpa.address, _A(2000));
 
@@ -215,7 +221,10 @@ describe("Test Gelato Task Creation / Execution", function () {
     await oracle.setPrice(_W("0.62"));
 
     // Create a new policy that triggers under $0.57
-    await fpa.connect(cust).newPolicy(rm.address, _W("0.57"), true, _A(1000), start + HOUR * 24, cust.address);
+    const creationTx = await fpa
+      .connect(cust)
+      .newPolicy(rm.address, _W("0.57"), true, _A(1000), start + HOUR * 24, cust.address);
+    const taskCreatedEvent = await getTransactionEvent(automate.interface, await creationTx.wait(), "TaskCreated");
 
     // Price drops below trigger price
     await helpers.time.increase(HOUR);
@@ -226,10 +235,7 @@ describe("Test Gelato Task Creation / Execution", function () {
     expect(canExec).to.be.true;
 
     // Gelato triggers the policy
-    const tx = await rm.connect(gelato).triggerPolicy(makePolicyId(rm.address, 1));
-
-    // TODO: find out why this makes the swap fail
-    // const tx = await gelato.sendTransaction({ to: rm.address, data: payload });
+    const tx = await gelato.sendTransaction({ to: rm.address, data: payload });
 
     // Sanity check
     await expect(tx).to.emit(pool, "PolicyResolved").withArgs(rm.address, makePolicyId(rm.address, 1), _A(1000));
@@ -240,24 +246,69 @@ describe("Test Gelato Task Creation / Execution", function () {
     // The rest of the payout was transferred to the policy holder
     await expect(tx).to.changeTokenBalance(currency, cust, _A("999.992491") /* $1000 payout - $0.007509 fee */);
 
-    // TODO: Task should be cancelled after this
+    // The task was removed from gelato
+    await expect(tx).to.emit(automate, "TaskCancelled").withArgs(taskCreatedEvent.args.taskId, fpa.address);
+  });
+
+  it("Removes task on expiration", async () => {
+    const { pool, fpa, rm, cust, currency, automate } = await helpers.loadFixture(deployPoolFixture);
+
+    await currency.connect(cust).approve(fpa.address, _A(2000));
+
+    const start = await helpers.time.latest();
+
+    // Create a new policy that expires in 24 hours
+    const creationTx = await fpa
+      .connect(cust)
+      .newPolicy(rm.address, _W("0.57"), true, _A(1000), start + HOUR * 24, cust.address);
+    const taskCreatedEvent = await getTransactionEvent(automate.interface, await creationTx.wait(), "TaskCreated");
+
+    // Policy expires
+    await helpers.time.increase(HOUR * 24);
+    const policy = (await rm.getPolicyData(makePolicyId(rm.address, 1)))[0];
+    const tx = await pool.expirePolicy(policy);
+
+    // The task has been cancelled
+    await expect(tx).to.emit(automate, "TaskCancelled").withArgs(taskCreatedEvent.args.taskId, fpa.address);
+
+    // No funds were transferred to or from the customer
+    await expect(tx).to.changeTokenBalance(currency, cust, 0);
+
+    // No funds were transferred to or from the payout automation contract
+    await expect(tx).to.changeTokenBalance(currency, fpa, 0);
+    await expect(tx).to.changeEtherBalance(fpa, 0);
+  });
+
+  it("Gives infinite allowance to the swap router on initialization", async () => {
+    const { fpa, guardian, currency, signers, cust, rm, oracle } = await helpers.loadFixture(deployPoolFixture);
+
+    // Initialized contract has infinite allowance on the router
+    expect(await currency.allowance(fpa.address, ADDRESSES.SwapRouter)).to.equal(MaxUint256);
+
+    // Changing router revokes allowance from old and grants to new
+    await fpa.connect(guardian).setSwapRouter(signers[1].address); // some random address
+    expect(await currency.allowance(fpa.address, ADDRESSES.SwapRouter)).to.equal(0);
+    expect(await currency.allowance(fpa.address, signers[1].address)).to.equal(MaxUint256);
+    await fpa.connect(guardian).setSwapRouter(ADDRESSES.SwapRouter); // roll back the change
+
+    // Creating / resolving policies does not change allowance
+    const start = await helpers.time.latest();
+    await currency.connect(cust).approve(fpa.address, _A(2000));
+    await fpa.connect(cust).newPolicy(rm.address, _W("0.57"), true, _A(1000), start + HOUR * 24, cust.address);
+    await helpers.time.increase(HOUR);
+    await oracle.setPrice(_W("0.559"));
+    await rm.triggerPolicy(makePolicyId(rm.address, 1));
+
+    expect(await currency.allowance(fpa.address, ADDRESSES.SwapRouter)).to.be.closeTo(MaxUint256, _A(2000));
   });
 });
 
-// TODO: task cancelation on expiration
-
 async function deployPoolFixture() {
-  fork(48475972);
+  setupChain(48475972);
 
   const [owner, lp, cust, gelato, admin, guardian, ...signers] = await ethers.getSigners();
 
-  // TODO: integrate this into ensuro's test-utils
-  const currency = await ethers.getContractAt("IERC20", ADDRESSES.USDC, owner);
-  await helpers.impersonateAccount(ADDRESSES.USDCWhale);
-  await helpers.setBalance(ADDRESSES.USDCWhale, ethers.utils.parseEther("100"));
-  const whale = await ethers.getSigner(ADDRESSES.USDCWhale);
-  await currency.connect(whale).transfer(lp.address, _A("8000"));
-  await currency.connect(whale).transfer(cust.address, _A("500"));
+  const currency = await initForkCurrency(ADDRESSES.USDC, ADDRESSES.USDCWhale, [lp, cust], [_A("8000"), _A("500")]);
 
   const pool = await deployPool({
     currency: currency.address,

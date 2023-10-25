@@ -41,8 +41,20 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
 
   SwapParams private _swapParams;
 
+  /**
+   * @dev Oracle for the price of gas tokens in the currency of the policy pool
+   */
   IPriceOracle private _oracle;
+
+  /**
+   * @dev Tolerance, in percentage Wad, for price slippage when swapping currency for gas tokens
+   */
   uint256 private _priceTolerance;
+
+  /**
+   * @dev Mapping from policyId to taskIds
+   */
+  mapping(uint256 => bytes32) private _taskIds;
 
   event OracleSet(IPriceOracle oracle);
   event SwapRouterSet(ISwapRouter swapRouter);
@@ -97,6 +109,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
       "PayoutAutomationBaseGelato: SwapRouter address cannot be zero"
     );
     _swapParams.swapRouter = swapRouter_;
+    _policyPool.currency().safeApprove(address(_swapParams.swapRouter), type(uint256).max);
     emit SwapRouterSet(swapRouter_);
 
     require(feeTier_ > 0, "PayoutAutomationBaseGelato: feeTier cannot be zero");
@@ -107,6 +120,9 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     emit PriceToleranceSet(_priceTolerance);
   }
 
+  /**
+   * @inheritdoc IPolicyHolder
+   */
   function onPayoutReceived(
     address, // riskModule, ignored
     address, // from - Must be the PolicyPool, ignored too. Not too relevant this parameter
@@ -115,11 +131,30 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
   ) external virtual override onlyPolicyPool returns (bytes4) {
     address paymentReceiver = ownerOf(tokenId);
     _burn(tokenId);
+    _cancelTask(_taskIds[tokenId]);
     uint256 remaining = _payTxFee(amount);
     _handlePayout(paymentReceiver, remaining);
     return IPolicyHolder.onPayoutReceived.selector;
   }
 
+  /**
+   * @inheritdoc IPolicyHolder
+   */
+  function onPolicyExpired(
+    address,
+    address,
+    uint256 tokenId
+  ) external virtual override onlyPolicyPool returns (bytes4) {
+    _burn(tokenId);
+    _cancelTask(_taskIds[tokenId]);
+    return IPolicyHolder.onPolicyExpired.selector;
+  }
+
+  /**
+   * @dev Pay gelato for the transaction fee
+   * @param amount The payout amount that was received
+   * @return The remaining amount after paying the transaction fee
+   */
   function _payTxFee(uint256 amount) internal returns (uint256) {
     (uint256 fee, address feeToken) = _getFeeDetails();
     require(feeToken == ETH, "Unsupported feeToken for gelato payment");
@@ -133,8 +168,6 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
       "ForwardPayoutAutomationGelato: the payout is not enough to cover the tx fees"
     );
 
-    _policyPool.currency().safeApprove(address(_swapParams.swapRouter), feeInUSDC);
-
     ISwapRouter.ExactOutputSingleParams memory params = ISwapRouter.ExactOutputSingleParams({
       tokenIn: address(_policyPool.currency()),
       tokenOut: address(weth),
@@ -143,14 +176,16 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
       deadline: block.timestamp,
       amountOut: fee,
       amountInMaximum: feeInUSDC,
-      sqrtPriceLimitX96: 0 // TODO: Calculate price limit
+      sqrtPriceLimitX96: 0 // Since we're limiting the transfer amount, we don't need to worry about the price impact of the transaction
     });
 
-    // TODO: empty reverts from SwapRouter or WMATIC withdrawal will not revert the tx. Fix the PolicyPool contract!
     uint256 actualFeeInUSDC = _swapParams.swapRouter.exactOutputSingle(params);
 
-    if (actualFeeInUSDC < feeInUSDC)
-      _policyPool.currency().safeApprove(address(_swapParams.swapRouter), 0);
+    // Sanity check
+    require(
+      actualFeeInUSDC <= feeInUSDC,
+      "ForwardPayoutAutomationGelato: exchange rate higher than tolerable"
+    );
 
     // Convert the WMATIC to MATIC for fee payment
     weth.withdraw(fee);
@@ -171,7 +206,6 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     address onBehalfOf
   ) public virtual override returns (uint256 policyId) {
     policyId = super.newPolicy(riskModule, triggerPrice, lower, payout, expiration, onBehalfOf);
-
     ModuleData memory moduleData = ModuleData({modules: new Module[](1), args: new bytes[](1)});
     moduleData.modules[0] = Module.RESOLVER;
     moduleData.args[0] = _resolverModuleArg(
@@ -179,7 +213,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
       abi.encodeCall(this.checker, (riskModule, policyId))
     );
 
-    _createTask(
+    _taskIds[policyId] = _createTask(
       address(riskModule),
       abi.encode(riskModule.triggerPolicy.selector),
       moduleData,
@@ -187,6 +221,13 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     );
   }
 
+  /**
+   *
+   * @dev Checks if the resolution task for a given policy can be executed
+   * @return canExec true only if the policy can be triggered
+   * @return execPayload ABI encoded call data to trigger the policy.
+   *                     Notice that the contract that will be called was defined on task creation.
+   */
   function checker(IPriceRiskModule riskModule, uint256 policyId)
     external
     view
@@ -219,7 +260,11 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
       address(swapRouter_) != address(0),
       "PayoutAutomationBaseGelato: SwapRouter address cannot be zero"
     );
+    address oldRouter = address(_swapParams.swapRouter);
     _swapParams.swapRouter = swapRouter_;
+
+    _policyPool.currency().safeApprove(oldRouter, 0);
+    _policyPool.currency().safeApprove(address(swapRouter_), type(uint256).max);
 
     emit SwapRouterSet(swapRouter_);
   }
@@ -244,7 +289,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     emit PriceToleranceSet(priceTolerance_);
   }
 
-  // Need to receive gas tokens when unwrapping. TODO: add amount validation to ensure no tokens are ever kept in this contract?
+  // Need to receive gas tokens when unwrapping.
   receive() external payable {}
 
   /**
@@ -252,5 +297,5 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
    * variables without shifting down storage in the inheritance chain.
    * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
    */
-  uint256[47] private __gap;
+  uint256[46] private __gap;
 }

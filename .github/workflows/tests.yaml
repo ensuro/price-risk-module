@@ -18,6 +18,7 @@ jobs:
       - run: npx hardhat compile
       - run: npx hardhat size-contracts
       - run: npm run solhint
+      - run: npm run lint
       - run: npx hardhat test
         env:
           ALCHEMY_URL: ${{ secrets.ALCHEMY_URL }}

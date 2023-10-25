@@ -3,6 +3,7 @@
   "version": "2.0.0",
   "description": "Risk Module for the Ensuro Protocol that's triggered based on the change in the price of an asset.",
   "scripts": {
+    "lint": "eslint test/**/*.js",
     "prettier": "prettier --write 'contracts/**/*.sol' --write 'test/**/*.js'",
     "solhint": "solhint 'contracts/**/*.sol'"
   },
