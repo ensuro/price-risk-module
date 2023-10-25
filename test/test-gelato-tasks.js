@@ -279,7 +279,7 @@ describe("Test Gelato Task Creation / Execution", function () {
     await expect(tx).to.changeEtherBalance(fpa, 0);
   });
 
-  it.only("Gives infinite allowance to the swap router on initialization", async () => {
+  it("Gives infinite allowance to the swap router on initialization", async () => {
     const { fpa, guardian, currency, signers, cust, rm, oracle } = await helpers.loadFixture(deployPoolFixture);
 
     // Initialized contract has infinite allowance on the router

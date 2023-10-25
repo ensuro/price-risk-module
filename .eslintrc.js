@@ -130,7 +130,19 @@ module.exports = {
     "no-restricted-imports": "error",
     "no-restricted-modules": "error",
     "no-restricted-properties": "error",
-    "no-restricted-syntax": "error",
+    "no-restricted-syntax": [
+      "error",
+      {
+        selector:
+          "CallExpression[callee.object.type='Identifier'][callee.object.name='it'][callee.property.type='Identifier'][callee.property.name='only']",
+        message: "Do not commit it.only. Use it instead.",
+      },
+      {
+        selector:
+          "CallExpression[callee.object.type='Identifier'][callee.object.name='describe'][callee.property.type='Identifier'][callee.property.name='only']",
+        message: "Do not commit describe.only. Use describe instead.",
+      },
+    ],
     "no-return-assign": "error",
     "no-return-await": "error",
     "no-script-url": "error",
