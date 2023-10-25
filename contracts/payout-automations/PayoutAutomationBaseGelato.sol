@@ -145,8 +145,8 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     address,
     uint256 tokenId
   ) external virtual override onlyPolicyPool returns (bytes4) {
-    _cancelTask(_taskIds[tokenId]);
     _burn(tokenId);
+    _cancelTask(_taskIds[tokenId]);
     return IPolicyHolder.onPolicyExpired.selector;
   }
 
