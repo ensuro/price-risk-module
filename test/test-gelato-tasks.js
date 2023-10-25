@@ -249,9 +249,36 @@ describe("Test Gelato Task Creation / Execution", function () {
     // The task was removed from gelato
     await expect(tx).to.emit(automate, "TaskCancelled").withArgs(taskCreatedEvent.args.taskId, fpa.address);
   });
-});
 
-// TODO: task cancelation on expiration
+  it("Removes task on expiration", async () => {
+    const { pool, fpa, rm, cust, currency, automate } = await helpers.loadFixture(deployPoolFixture);
+
+    await currency.connect(cust).approve(fpa.address, _A(2000));
+
+    const start = await helpers.time.latest();
+
+    // Create a new policy that expires in 24 hours
+    const creationTx = await fpa
+      .connect(cust)
+      .newPolicy(rm.address, _W("0.57"), true, _A(1000), start + HOUR * 24, cust.address);
+    const taskCreatedEvent = await getTransactionEvent(automate.interface, await creationTx.wait(), "TaskCreated");
+
+    // Policy expires
+    await helpers.time.increase(HOUR * 24);
+    const policy = (await rm.getPolicyData(makePolicyId(rm.address, 1)))[0];
+    const tx = await pool.expirePolicy(policy);
+
+    // The task has been cancelled
+    await expect(tx).to.emit(automate, "TaskCancelled").withArgs(taskCreatedEvent.args.taskId, fpa.address);
+
+    // No funds were transferred to or from the customer
+    await expect(tx).to.changeTokenBalance(currency, cust, 0);
+
+    // No funds were transferred to or from the payout automation contract
+    await expect(tx).to.changeTokenBalance(currency, fpa, 0);
+    await expect(tx).to.changeEtherBalance(fpa, 0);
+  });
+});
 
 async function deployPoolFixture() {
   setupChain(48475972);

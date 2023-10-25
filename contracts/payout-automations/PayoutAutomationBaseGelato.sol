@@ -123,6 +123,16 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     return IPolicyHolder.onPayoutReceived.selector;
   }
 
+  function onPolicyExpired(
+    address,
+    address,
+    uint256 tokenId
+  ) external virtual override onlyPolicyPool returns (bytes4) {
+    _cancelTask(_taskIds[tokenId]);
+    _burn(tokenId);
+    return IPolicyHolder.onPolicyExpired.selector;
+  }
+
   function _payTxFee(uint256 amount) internal returns (uint256) {
     (uint256 fee, address feeToken) = _getFeeDetails();
     require(feeToken == ETH, "Unsupported feeToken for gelato payment");
