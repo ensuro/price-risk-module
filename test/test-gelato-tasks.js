@@ -278,6 +278,29 @@ describe("Test Gelato Task Creation / Execution", function () {
     await expect(tx).to.changeTokenBalance(currency, fpa, 0);
     await expect(tx).to.changeEtherBalance(fpa, 0);
   });
+
+  it.only("Gives infinite allowance to the swap router on initialization", async () => {
+    const { fpa, guardian, currency, signers, cust, rm, oracle } = await helpers.loadFixture(deployPoolFixture);
+
+    // Initialized contract has infinite allowance on the router
+    expect(await currency.allowance(fpa.address, ADDRESSES.SwapRouter)).to.equal(MaxUint256);
+
+    // Changing router revokes allowance from old and grants to new
+    await fpa.connect(guardian).setSwapRouter(signers[1].address); // some random address
+    expect(await currency.allowance(fpa.address, ADDRESSES.SwapRouter)).to.equal(0);
+    expect(await currency.allowance(fpa.address, signers[1].address)).to.equal(MaxUint256);
+    await fpa.connect(guardian).setSwapRouter(ADDRESSES.SwapRouter); // roll back the change
+
+    // Creating / resolving policies does not change allowance
+    const start = await helpers.time.latest();
+    await currency.connect(cust).approve(fpa.address, _A(2000));
+    await fpa.connect(cust).newPolicy(rm.address, _W("0.57"), true, _A(1000), start + HOUR * 24, cust.address);
+    await helpers.time.increase(HOUR);
+    await oracle.setPrice(_W("0.559"));
+    await rm.triggerPolicy(makePolicyId(rm.address, 1));
+
+    expect(await currency.allowance(fpa.address, ADDRESSES.SwapRouter)).to.be.closeTo(MaxUint256, _A(2000));
+  });
 });
 
 async function deployPoolFixture() {

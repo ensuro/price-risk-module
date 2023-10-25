@@ -99,6 +99,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
       "PayoutAutomationBaseGelato: SwapRouter address cannot be zero"
     );
     _swapParams.swapRouter = swapRouter_;
+    _policyPool.currency().safeApprove(address(_swapParams.swapRouter), type(uint256).max);
     emit SwapRouterSet(swapRouter_);
 
     require(feeTier_ > 0, "PayoutAutomationBaseGelato: feeTier cannot be zero");
@@ -146,8 +147,6 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
       "ForwardPayoutAutomationGelato: the payout is not enough to cover the tx fees"
     );
 
-    _policyPool.currency().safeApprove(address(_swapParams.swapRouter), feeInUSDC);
-
     ISwapRouter.ExactOutputSingleParams memory params = ISwapRouter.ExactOutputSingleParams({
       tokenIn: address(_policyPool.currency()),
       tokenOut: address(weth),
@@ -166,9 +165,6 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
       actualFeeInUSDC <= feeInUSDC,
       "ForwardPayoutAutomationGelato: exchange rate higher than tolerable"
     );
-
-    if (actualFeeInUSDC < feeInUSDC)
-      _policyPool.currency().safeApprove(address(_swapParams.swapRouter), 0);
 
     // Convert the WMATIC to MATIC for fee payment
     weth.withdraw(fee);
@@ -236,7 +232,11 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
       address(swapRouter_) != address(0),
       "PayoutAutomationBaseGelato: SwapRouter address cannot be zero"
     );
+    address oldRouter = address(_swapParams.swapRouter);
     _swapParams.swapRouter = swapRouter_;
+
+    _policyPool.currency().safeApprove(oldRouter, 0);
+    _policyPool.currency().safeApprove(address(swapRouter_), type(uint256).max);
 
     emit SwapRouterSet(swapRouter_);
   }
