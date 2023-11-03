@@ -44,6 +44,9 @@ contract AAVEBuyEthPayoutAutomation is PayoutAutomationBaseGelato {
   }
 
   function _handlePayout(address receiver, uint256 amount) internal override {
+    // WARNING: in this contract, different to other payout automations, the amount received is in ETH,
+    // since all the USD were already exchanged in the _payTxFee function. This is to avoid doing the exchange twice.
+    // "Practicality beats purity"
     address asset = address(weth);
     if (amount != 0) {
       _aave.supply(asset, amount, receiver, 0);
@@ -86,6 +89,8 @@ contract AAVEBuyEthPayoutAutomation is PayoutAutomationBaseGelato {
     weth.withdraw(fee);
     _transfer(fee, feeToken);
 
+    // WARNING: this returns the remaining amount in ETH, this is different from other payout automations
+    // The reason is we already exchanged all the USD for ETH. "Practicality beats purity"
     return receivedEth - fee;
   }
 
