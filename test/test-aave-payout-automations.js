@@ -33,6 +33,7 @@ describe("Test AAVE payout automation contracts", function () {
 
     WMATIC: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
     MATICWhale: "0x55FF76BFFC3Cdd9D5FdbBC2ece4528ECcE45047e", // Random account with lot of WMATIC
+    aWMATIC: "0x6d80113e533a2C0fe82EaBD35f1875DcEA89Ea97",
 
     AUTOMATE: "0x527a819db1eb0e34426297b03bae11F2f8B3A19E",
     SwapRouter: "0xE592427A0AEce92De3Edee1F18E0157C05861564",
@@ -43,41 +44,53 @@ describe("Test AAVE payout automation contracts", function () {
     _A = amountFunction(decimals);
   });
 
-  it("Should fail if constructed with null address ", async () => {
-    const { pool, AAVERepayPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
-    await expect(
-      AAVERepayPayoutAutomation.deploy(AddressZero, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, AddressZero)
-    ).to.be.revertedWith("PayoutAutomationBase: policyPool_ cannot be the zero address");
-    await expect(
-      AAVERepayPayoutAutomation.deploy(pool.address, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, AddressZero)
-    ).to.be.revertedWith("AAVERepayPayoutAutomation: you must specify AAVE's Pool address");
-    await expect(AAVERepayPayoutAutomation.deploy(pool.address, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, ADDRESSES.aaveV3))
-      .not.to.be.reverted;
+  ["AAVERepayPayoutAutomation", "AAVEBuyEthPayoutAutomation"].forEach((contractName) => {
+    it(`Should fail if constructed with null address - ${contractName}`, async () => {
+      const { pool, ...others } = await helpers.loadFixture(deployPoolFixture);
+      const contractClass = others[contractName];
+      await expect(
+        contractClass.deploy(AddressZero, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, AddressZero)
+      ).to.be.revertedWith("PayoutAutomationBase: policyPool_ cannot be the zero address");
+      await expect(
+        contractClass.deploy(pool.address, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, AddressZero)
+      ).to.be.revertedWith(`${contractName}: you must specify AAVE's Pool address`);
+      await expect(contractClass.deploy(pool.address, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, ADDRESSES.aaveV3)).not.to.be
+        .reverted;
+    });
+
+    it(`Should never allow reinitialization - ${contractName}`, async () => {
+      const { pool, maticOracle, lp, ...others } = await helpers.loadFixture(deployPoolFixture);
+      const contractClass = others[contractName];
+      const ps = await hre.upgrades.deployProxy(
+        contractClass,
+        ["The Name", "SYMB", lp.address, maticOracle.address, ADDRESSES.SwapRouter, _A("0.0005")],
+        {
+          kind: "uups",
+          constructorArgs: [pool.address, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
+        }
+      );
+
+      await expect(
+        ps.initialize("Another Name", "SYMB", lp.address, maticOracle.address, ADDRESSES.SwapRouter, _A("0.0005"))
+      ).to.be.revertedWith("Initializable: contract is already initialized");
+    });
   });
 
-  it("Should never allow reinitialization", async () => {
-    const { pool, AAVERepayPayoutAutomation, maticOracle, lp } = await helpers.loadFixture(deployPoolFixture);
-    const ps = await hre.upgrades.deployProxy(
-      AAVERepayPayoutAutomation,
-      ["The Name", "SYMB", lp.address, maticOracle.address, ADDRESSES.SwapRouter, _A("0.0005")],
-      {
-        kind: "uups",
-        constructorArgs: [pool.address, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
-      }
-    );
-
-    await expect(
-      ps.initialize("Another Name", "SYMB", lp.address, maticOracle.address, ADDRESSES.SwapRouter, _A("0.0005"))
-    ).to.be.revertedWith("Initializable: contract is already initialized");
-  });
-
-  it("Should do infinite approval on initialization", async () => {
-    const { ps, currency } = await helpers.loadFixture(deployPoolAndAutomationFixture);
+  it("Should do infinite approval on initialization - AAVERepayPayoutAutomation", async () => {
+    const ret = await helpers.loadFixture(deployPoolFixture);
+    const { ps, currency } = await deployPoolWRepayAutoFixture(ret);
     expect(await currency.allowance(ps.address, ADDRESSES.aaveV3)).to.be.equal(MaxUint256);
   });
 
+  it("Should do infinite approval on initialization - AAVEBuyEthPayoutAutomation", async () => {
+    const ret = await helpers.loadFixture(deployPoolFixture);
+    const { ps, wmatic } = await deployPoolWBuyEthAutoFixture(ret);
+    expect(await wmatic.allowance(ps.address, ADDRESSES.aaveV3)).to.be.equal(MaxUint256);
+  });
+
   it("Can create the policy through the ps and since there's no debt, deposits in AAVE", async () => {
-    const { pool, ps, rm, oracle, currency, aUSDC, cust } = await helpers.loadFixture(deployPoolAndAutomationFixture);
+    const ret = await helpers.loadFixture(deployPoolFixture);
+    const { pool, ps, rm, oracle, currency, aUSDC, cust } = await deployPoolWRepayAutoFixture(ret);
     const start = await helpers.time.latest();
     await currency.connect(cust).approve(ps.address, _A(2000));
 
@@ -116,8 +129,9 @@ describe("Test AAVE payout automation contracts", function () {
   });
 
   it("Can create policies that when triggered repay stable and variable debt", async () => {
+    const ret = await helpers.loadFixture(deployPoolFixture);
     const { pool, ps, rm, oracle, currency, aave, aUSDCDebtStable, aUSDCDebtVariable, wmatic, aUSDC, cust, cust2 } =
-      await helpers.loadFixture(deployPoolAndAutomationFixture);
+      await deployPoolWRepayAutoFixture(ret);
     const start = await helpers.time.latest();
 
     await currency.connect(cust).approve(ps.address, MaxUint256);
@@ -161,8 +175,9 @@ describe("Test AAVE payout automation contracts", function () {
   });
 
   it("Can create policies that when triggered repay mixed stable and variable debt", async () => {
+    const ret = await helpers.loadFixture(deployPoolFixture);
     const { pool, ps, rm, oracle, currency, aave, aUSDCDebtStable, aUSDCDebtVariable, wmatic, aUSDC, cust } =
-      await helpers.loadFixture(deployPoolAndAutomationFixture);
+      await deployPoolWRepayAutoFixture(ret);
     const start = await helpers.time.latest();
 
     await currency.connect(cust).approve(ps.address, MaxUint256);
@@ -200,6 +215,59 @@ describe("Test AAVE payout automation contracts", function () {
     expect(await aUSDC.balanceOf(cust.address)).to.be.closeTo(_A(300), _A("0.05"));
   });
 
+  it("Can create the policy through the BuyEth ps and deposits in AAVE", async () => {
+    const ret = await helpers.loadFixture(deployPoolFixture);
+    const { pool, ps, rm, oracle, currency, aave, cust, wmatic, aWMATIC, maticOracle } =
+      await deployPoolWBuyEthAutoFixture(ret);
+    const start = await helpers.time.latest();
+    await currency.connect(cust).approve(ps.address, _A(2000));
+
+    // Create two policies, one with 1400 as price and the other with 1200
+    const policyId = makePolicyId(rm.address, 1);
+    await expect(ps.connect(cust).newPolicy(rm.address, _W(1400), true, _A(1000), start + HOUR * 24, cust.address))
+      .to.emit(ps, "Transfer")
+      .withArgs(AddressZero, cust.address, policyId)
+      .to.emit(pool, "Transfer")
+      .withArgs(AddressZero, ps.address, policyId);
+
+    await expect(ps.connect(cust).newPolicy(rm.address, _W(1200), true, _A("0.005"), start + HOUR * 24, cust.address))
+      .not.to.be.reverted;
+
+    const policyId2 = makePolicyId(rm.address, 2);
+
+    expect(await pool.ownerOf(policyId)).to.be.equal(ps.address);
+    expect(await ps.ownerOf(policyId)).to.be.equal(cust.address);
+    expect(await pool.ownerOf(policyId2)).to.be.equal(ps.address);
+    expect(await ps.ownerOf(policyId2)).to.be.equal(cust.address);
+
+    await helpers.time.increase(HOUR);
+    await oracle.setPrice(_E("1390"));
+
+    // Uniswap Price is ~0.53 - Setting the oracle at 0.5 should revert the operation
+    await maticOracle.setPrice(_E("0.5"));
+    await expect(rm.triggerPolicy(policyId)).to.be.revertedWith("Too little received");
+
+    // In this case should be accepted because even when Uni price is more expensive, is within 2% accepted
+    // difference
+    await maticOracle.setPrice(_E("0.52"));
+
+    await expect(rm.triggerPolicy(policyId))
+      .to.emit(aave, "Supply")
+      .withArgs(wmatic.address, ps.address, cust.address, _E("1888.408885662289522076"), 0);
+
+    expect(await aWMATIC.balanceOf(cust.address)).to.be.closeTo(_E("1888.40"), _E("0.10"));
+
+    // Trying to trigger policyId2 fails because payout is not enough to cover Gelato's fee
+    await oracle.setPrice(_E("1190"));
+    await expect(rm.triggerPolicy(policyId2)).to.be.revertedWith(
+      "AAVEBuyEthPayoutAutomation: the payout is not enough to cover the tx fees"
+    );
+
+    await helpers.time.increase(HOUR * 24);
+    const policy2 = (await rm.getPolicyData(policyId2))[0];
+    await expect(pool.expirePolicy(policy2)).not.to.be.reverted;
+  });
+
   async function depositAndTakeDebt(aave, usdc, wmatic, debtToken, user, depositAmount, borrowAmount) {
     await wmatic.connect(user).approve(aave.address, MaxUint256);
     await aave.connect(user).deposit(wmatic.address, depositAmount, user.address, 0);
@@ -222,9 +290,6 @@ describe("Test AAVE payout automation contracts", function () {
     );
 
     const aave = await ethers.getContractAt("IPool", ADDRESSES.aaveV3);
-    const aUSDC = await ethers.getContractAt("IERC20Metadata", ADDRESSES.aUSDC);
-    const aUSDCDebtVariable = await ethers.getContractAt("IERC20Metadata", ADDRESSES.aUSDCDebtVariable);
-    const aUSDCDebtStable = await ethers.getContractAt("IERC20Metadata", ADDRESSES.aUSDCDebtStable);
 
     // Transfer some wmatic to the customers
     const wmatic = await ethers.getContractAt("IERC20Metadata", ADDRESSES.WMATIC);
@@ -275,15 +340,13 @@ describe("Test AAVE payout automation contracts", function () {
     await rm.setCDF(24, newCdf);
 
     const AAVERepayPayoutAutomation = await ethers.getContractFactory("AAVERepayPayoutAutomation");
+    const AAVEBuyEthPayoutAutomation = await ethers.getContractFactory("AAVEBuyEthPayoutAutomation");
 
     return {
       pool,
       currency,
       wmatic,
       aave,
-      aUSDC,
-      aUSDCDebtStable,
-      aUSDCDebtVariable,
       accessManager,
       jrEtk,
       srEtk,
@@ -294,6 +357,7 @@ describe("Test AAVE payout automation contracts", function () {
       PriceRiskModule,
       PriceOracleMock,
       AAVERepayPayoutAutomation,
+      AAVEBuyEthPayoutAutomation,
       lp,
       cust,
       cust2,
@@ -302,8 +366,7 @@ describe("Test AAVE payout automation contracts", function () {
     };
   }
 
-  async function deployPoolAndAutomationFixture() {
-    const ret = await deployPoolFixture();
+  async function deployPoolWRepayAutoFixture(ret) {
     const AutomateMock = await ethers.getContractFactory("AutomateMock");
     const automate = await AutomateMock.deploy(ret.gelato.address);
 
@@ -315,10 +378,40 @@ describe("Test AAVE payout automation contracts", function () {
         constructorArgs: [ret.pool.address, automate.address, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
       }
     );
+
+    const aUSDC = await ethers.getContractAt("IERC20Metadata", ADDRESSES.aUSDC);
+    const aUSDCDebtVariable = await ethers.getContractAt("IERC20Metadata", ADDRESSES.aUSDCDebtVariable);
+    const aUSDCDebtStable = await ethers.getContractAt("IERC20Metadata", ADDRESSES.aUSDCDebtStable);
+
     return {
       ps,
       automate,
       AutomateMock,
+      aUSDC,
+      aUSDCDebtStable,
+      aUSDCDebtVariable,
+      ...ret,
+    };
+  }
+
+  async function deployPoolWBuyEthAutoFixture(ret) {
+    const AutomateMock = await ethers.getContractFactory("AutomateMock");
+    const automate = await AutomateMock.deploy(ret.gelato.address);
+
+    const ps = await hre.upgrades.deployProxy(
+      ret.AAVEBuyEthPayoutAutomation,
+      ["The Name", "SYMB", ret.lp.address, ret.maticOracle.address, ADDRESSES.SwapRouter, _A("0.0005")],
+      {
+        kind: "uups",
+        constructorArgs: [ret.pool.address, automate.address, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
+      }
+    );
+    const aWMATIC = await ethers.getContractAt("IERC20Metadata", ADDRESSES.aWMATIC);
+    return {
+      ps,
+      automate,
+      AutomateMock,
+      aWMATIC,
       ...ret,
     };
   }
