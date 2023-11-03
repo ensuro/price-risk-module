@@ -27,29 +27,29 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
   using WadRayMath for uint256;
   using SafeCast for uint256;
 
-  uint256 private constant WAD = 1e18;
+  uint256 internal constant WAD = 1e18;
 
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-  uint256 private immutable _wadToCurrencyFactor;
+  uint256 internal immutable _wadToCurrencyFactor;
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
-  IWETH9 private immutable weth;
+  IWETH9 internal immutable weth;
 
   struct SwapParams {
     ISwapRouter swapRouter;
     uint24 feeTier;
   }
 
-  SwapParams private _swapParams;
+  SwapParams internal _swapParams;
 
   /**
    * @dev Oracle for the price of gas tokens in the currency of the policy pool
    */
-  IPriceOracle private _oracle;
+  IPriceOracle internal _oracle;
 
   /**
    * @dev Tolerance, in percentage Wad, for price slippage when swapping currency for gas tokens
    */
-  uint256 private _priceTolerance;
+  uint256 internal _priceTolerance;
 
   /**
    * @dev Mapping from policyId to taskIds
@@ -155,7 +155,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
    * @param amount The payout amount that was received
    * @return The remaining amount after paying the transaction fee
    */
-  function _payTxFee(uint256 amount) internal returns (uint256) {
+  function _payTxFee(uint256 amount) internal virtual returns (uint256) {
     (uint256 fee, address feeToken) = _getFeeDetails();
     require(feeToken == ETH, "Unsupported feeToken for gelato payment");
 

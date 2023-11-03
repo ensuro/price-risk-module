@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 import {PayoutAutomationBaseGelato} from "./PayoutAutomationBaseGelato.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {IPolicyPool} from "@ensuro/core/contracts/interfaces/IPolicyPool.sol";
@@ -13,8 +12,6 @@ import {DataTypes} from "../dependencies/aave-v3/DataTypes.sol";
 import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 
 contract AAVERepayPayoutAutomation is PayoutAutomationBaseGelato {
-  using SafeERC20 for IERC20Metadata;
-
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IPool internal immutable _aave;
 
@@ -64,7 +61,7 @@ contract AAVERepayPayoutAutomation is PayoutAutomationBaseGelato {
       }
     }
     if (amount != 0) {
-      _aave.deposit(asset, amount, receiver, 0);
+      _aave.supply(asset, amount, receiver, 0);
     }
   }
 
