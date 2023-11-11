@@ -20,8 +20,6 @@ import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
 
 import {PayoutAutomationBase} from "./PayoutAutomationBase.sol";
 
-// import "hardhat/console.sol";
-
 abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutomationBase {
   using SafeERC20 for IERC20Metadata;
   using WadRayMath for uint256;

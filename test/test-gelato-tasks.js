@@ -14,6 +14,7 @@ const {
   grantComponentRole,
   grantRole,
   makePolicyId,
+  getRole,
 } = require("@ensuro/core/js/utils");
 const {
   addEToken,
@@ -301,14 +302,96 @@ describe("Test Gelato Task Creation / Execution", function () {
 
     expect(await currency.allowance(fpa.address, ADDRESSES.SwapRouter)).to.be.closeTo(MaxUint256, _A(2000));
   });
+
+  it("Works with alternative SwapRouterMock", async () => {
+    const { fpa, gelato, guardian, currency, admin, cust, rm, oracle, marketMaker, signers } =
+      await helpers.loadFixture(deployPoolFixture);
+
+    const SwapRouterMock = await ethers.getContractFactory("SwapRouterMock");
+    const swapRouter = await SwapRouterMock.deploy(admin.address, currency.address);
+    await swapRouter.deployed();
+    await grantRole(hre, swapRouter.connect(admin), "GUARDIAN_ROLE", guardian);
+    await swapRouter.connect(guardian).setOracle(ADDRESSES.WMATIC, oracle.address);
+
+    // Deposit some WMATIC in the swap router
+    await helpers.setBalance(marketMaker.address, _W(10000));
+    const wmatic = await ethers.getContractAt("IWETH9", ADDRESSES.WMATIC);
+    await wmatic.connect(marketMaker).deposit({ value: _W(1000) });
+    await wmatic.connect(marketMaker).transfer(swapRouter.address, _W(1000));
+
+    // Deposit some USDC in the swap router
+    await currency.connect(marketMaker).transfer(swapRouter.address, _A(20000));
+
+    // Allow the payout automation contract to perform swaps
+    await grantRole(hre, swapRouter.connect(admin), "SWAP_ROLE", fpa);
+
+    // Use the mock swapRouter in the payout automation
+    await fpa.connect(guardian).setSwapRouter(swapRouter.address);
+
+    // Create and trigger a policy
+    const start = await helpers.time.latest();
+    await oracle.setPrice(_W("0.62"));
+    await currency.connect(cust).approve(fpa.address, _A(2000));
+    await fpa.connect(cust).newPolicy(rm.address, _W("0.57"), true, _A(1000), start + HOUR * 24, cust.address);
+    await helpers.time.increase(HOUR);
+    await oracle.setPrice(_W("0.559"));
+    const tx = await rm.triggerPolicy(makePolicyId(rm.address, 1));
+
+    // The exchange was made using the swap router funds
+    await expect(tx).to.changeEtherBalance(gelato, _W("0.013371337")); // sanity check that the fee was paid
+    await expect(tx).to.changeTokenBalance(wmatic, swapRouter, _W("-0.013371337"));
+    await expect(tx).to.changeTokenBalance(currency, swapRouter, _A("0.007474") /* $0.007474 fee */);
+
+    // The swapRouter funds can only be withdrawn by the guardian
+    expect(await swapRouter.hasRole(getRole("GUARDIAN_ROLE"), signers[1].address)).to.be.false;
+    await expect(swapRouter.connect(signers[1]).withdraw(ADDRESSES.ETH, _W(1))).to.be.revertedWith(
+      accessControlMessage(signers[1].address, null, "GUARDIAN_ROLE")
+    );
+    await expect(swapRouter.connect(signers[1]).withdraw(currency.address, _A(100))).to.be.revertedWith(
+      accessControlMessage(signers[1].address, null, "GUARDIAN_ROLE")
+    );
+
+    await expect(swapRouter.connect(guardian).withdraw(wmatic.address, _W(1))).to.changeTokenBalance(
+      wmatic,
+      guardian,
+      _W(1)
+    );
+    await expect(swapRouter.connect(guardian).withdraw(currency.address, _A(100))).to.changeTokenBalance(
+      currency,
+      guardian,
+      _A(100)
+    );
+
+    // The swapRouter can also do exactInputSingle swaps
+    await grantRole(hre, swapRouter.connect(admin), "SWAP_ROLE", marketMaker);
+    await currency.connect(marketMaker).approve(swapRouter.address, _A(10));
+    await oracle.setPrice(_W("0.64"));
+    const swapTx = await swapRouter.connect(marketMaker).exactInputSingle([
+      currency.address, // address tokenIn;
+      wmatic.address, // address tokenOut;
+      100, // uint24 fee;
+      marketMaker.address, // address recipient;
+      (await helpers.time.latest()) + 3600, // uint256 deadline;
+      _A("10"), // uint256 amountIn;
+      _W("15"), // uint256 amountOutMinimum;
+      0, // uint160 sqrtPriceLimitX96;
+    ]);
+    await expect(swapTx).to.changeTokenBalance(currency, marketMaker, _A("-10"));
+    await expect(swapTx).to.changeTokenBalance(wmatic, marketMaker, _W("15.625"));
+  });
 });
 
 async function deployPoolFixture() {
   setupChain(48475972);
 
-  const [owner, lp, cust, gelato, admin, guardian, ...signers] = await ethers.getSigners();
+  const [owner, lp, cust, gelato, admin, guardian, marketMaker, ...signers] = await ethers.getSigners();
 
-  const currency = await initForkCurrency(ADDRESSES.USDC, ADDRESSES.USDCWhale, [lp, cust], [_A("8000"), _A("500")]);
+  const currency = await initForkCurrency(
+    ADDRESSES.USDC,
+    ADDRESSES.USDCWhale,
+    [lp, cust, marketMaker],
+    [_A("8000"), _A("500"), _A("100000")]
+  );
 
   const pool = await deployPool({
     currency: currency.address,
@@ -374,6 +457,7 @@ async function deployPoolFixture() {
     guardian,
     jrEtk,
     lp,
+    marketMaker,
     oracle,
     owner,
     pool,
