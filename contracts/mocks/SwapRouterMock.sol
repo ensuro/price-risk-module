@@ -107,11 +107,7 @@ contract SwapRouterMock is AccessControl, ISwapRouter {
    * @inheritdoc ISwapRouter
    * @notice This function is not implemented
    */
-  function exactOutput(ExactOutputParams calldata params)
-    external
-    payable
-    returns (uint256 amountIn)
-  {
+  function exactOutput(ExactOutputParams calldata) external payable returns (uint256) {
     revert("Not implemented");
   }
 
@@ -119,11 +115,7 @@ contract SwapRouterMock is AccessControl, ISwapRouter {
    * @inheritdoc ISwapRouter
    * @notice This function is not implemented
    */
-  function exactInput(ExactInputParams calldata params)
-    external
-    payable
-    returns (uint256 amountOut)
-  {
+  function exactInput(ExactInputParams calldata) external payable returns (uint256) {
     revert("Not implemented");
   }
 
