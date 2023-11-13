@@ -14,6 +14,7 @@ const {
   grantComponentRole,
   grantRole,
   makePolicyId,
+  getRole,
 } = require("@ensuro/core/js/utils");
 const {
   addEToken,
@@ -55,7 +56,7 @@ hre.upgrades.silenceWarnings();
 
 describe("Test Gelato Task Creation / Execution", function () {
   it("ForwardPayoutAutomation can be constructed with policy pool and gelato's address", async () => {
-    const { pool, ForwardPayoutAutomation, automate } = await helpers.loadFixture(deployPoolFixture);
+    const { pool, ForwardPayoutAutomation, automate } = await helpers.loadFixture(forwardPayoutAutomationFixture);
     await expect(ForwardPayoutAutomation.deploy(pool.address, automate.address, ADDRESSES.WMATIC)).not.to.be.reverted;
 
     await expect(ForwardPayoutAutomation.deploy(pool.address, automate.address, AddressZero)).to.be.revertedWith(
@@ -64,7 +65,7 @@ describe("Test Gelato Task Creation / Execution", function () {
   });
 
   it("Should never allow reinitialization", async () => {
-    const { fpa, lp, oracle } = await helpers.loadFixture(deployPoolFixture);
+    const { fpa, lp, oracle } = await helpers.loadFixture(forwardPayoutAutomationFixture);
 
     await expect(
       fpa.initialize("Another Name", "SYMB", lp.address, oracle.address, ADDRESSES.SwapRouter, _A("0.0005"))
@@ -72,7 +73,9 @@ describe("Test Gelato Task Creation / Execution", function () {
   });
 
   it("Requires all parameters on initialization", async () => {
-    const { pool, ForwardPayoutAutomation, automate, oracle, admin } = await helpers.loadFixture(deployPoolFixture);
+    const { pool, ForwardPayoutAutomation, automate, oracle, admin } = await helpers.loadFixture(
+      forwardPayoutAutomationFixture
+    );
 
     const fpa = await ForwardPayoutAutomation.deploy(pool.address, automate.address, ADDRESSES.WMATIC);
     await fpa.deployed();
@@ -101,7 +104,7 @@ describe("Test Gelato Task Creation / Execution", function () {
   });
 
   it("Allows setting oracle", async () => {
-    const { fpa, oracle, lp, guardian, signers } = await helpers.loadFixture(deployPoolFixture);
+    const { fpa, oracle, lp, guardian, signers } = await helpers.loadFixture(forwardPayoutAutomationFixture);
 
     expect(await fpa.oracle()).to.equal(oracle.address);
     await expect(fpa.connect(lp).setOracle(AddressZero)).to.be.revertedWith(
@@ -118,7 +121,7 @@ describe("Test Gelato Task Creation / Execution", function () {
   });
 
   it("Allows setting swap router", async () => {
-    const { fpa, lp, guardian, signers } = await helpers.loadFixture(deployPoolFixture);
+    const { fpa, lp, guardian, signers } = await helpers.loadFixture(forwardPayoutAutomationFixture);
 
     expect(await fpa.swapRouter()).to.equal(ADDRESSES.SwapRouter);
     await expect(fpa.connect(lp).setSwapRouter(AddressZero)).to.be.revertedWith(
@@ -135,7 +138,7 @@ describe("Test Gelato Task Creation / Execution", function () {
   });
 
   it("Allows setting feeTier", async () => {
-    const { fpa, lp, guardian } = await helpers.loadFixture(deployPoolFixture);
+    const { fpa, lp, guardian } = await helpers.loadFixture(forwardPayoutAutomationFixture);
 
     expect(await fpa.feeTier()).to.equal(_A("0.0005"));
     await expect(fpa.connect(lp).setFeeTier(_A(0))).to.be.revertedWith(
@@ -152,7 +155,7 @@ describe("Test Gelato Task Creation / Execution", function () {
   });
 
   it("Allows setting prceTolerance", async () => {
-    const { fpa, lp, guardian } = await helpers.loadFixture(deployPoolFixture);
+    const { fpa, lp, guardian } = await helpers.loadFixture(forwardPayoutAutomationFixture);
 
     expect(await fpa.priceTolerance()).to.equal(_W("0.02"));
     await expect(fpa.connect(lp).setPriceTolerance(_W(0))).to.be.revertedWith(
@@ -169,7 +172,7 @@ describe("Test Gelato Task Creation / Execution", function () {
   });
 
   it("Creates a policy resolution task when a policy is created", async () => {
-    const { fpa, automate, rm, cust, currency, oracle } = await helpers.loadFixture(deployPoolFixture);
+    const { fpa, automate, rm, cust, currency, oracle } = await helpers.loadFixture(forwardPayoutAutomationFixture);
 
     await currency.connect(cust).approve(fpa.address, _A(2000));
 
@@ -211,7 +214,9 @@ describe("Test Gelato Task Creation / Execution", function () {
   });
 
   it("Pays for gelato tx fee when resolving policies", async () => {
-    const { pool, fpa, rm, cust, currency, oracle, gelato, automate } = await helpers.loadFixture(deployPoolFixture);
+    const { pool, fpa, rm, cust, currency, oracle, gelato, automate } = await helpers.loadFixture(
+      forwardPayoutAutomationFixture
+    );
 
     await currency.connect(cust).approve(fpa.address, _A(2000));
 
@@ -251,7 +256,7 @@ describe("Test Gelato Task Creation / Execution", function () {
   });
 
   it("Removes task on expiration", async () => {
-    const { pool, fpa, rm, cust, currency, automate } = await helpers.loadFixture(deployPoolFixture);
+    const { pool, fpa, rm, cust, currency, automate } = await helpers.loadFixture(forwardPayoutAutomationFixture);
 
     await currency.connect(cust).approve(fpa.address, _A(2000));
 
@@ -280,7 +285,9 @@ describe("Test Gelato Task Creation / Execution", function () {
   });
 
   it("Gives infinite allowance to the swap router on initialization", async () => {
-    const { fpa, guardian, currency, signers, cust, rm, oracle } = await helpers.loadFixture(deployPoolFixture);
+    const { fpa, guardian, currency, signers, cust, rm, oracle } = await helpers.loadFixture(
+      forwardPayoutAutomationFixture
+    );
 
     // Initialized contract has infinite allowance on the router
     expect(await currency.allowance(fpa.address, ADDRESSES.SwapRouter)).to.equal(MaxUint256);
@@ -303,12 +310,186 @@ describe("Test Gelato Task Creation / Execution", function () {
   });
 });
 
-async function deployPoolFixture() {
+describe("SwapRouterMock", () => {
+  it("Works with payout automation", async () => {
+    const { fpa, gelato, guardian, currency, admin, cust, rm, oracle, swapRouter, wmatic } = await helpers.loadFixture(
+      swapRouterMockFixture
+    );
+    // Allow the payout automation contract to perform swaps
+    await grantRole(hre, swapRouter.connect(admin), "SWAP_ROLE", fpa);
+
+    // Use the mock swapRouter in the payout automation
+    await fpa.connect(guardian).setSwapRouter(swapRouter.address);
+
+    // Create and trigger a policy
+    const start = await helpers.time.latest();
+    await oracle.setPrice(_W("0.62"));
+    await currency.connect(cust).approve(fpa.address, _A(2000));
+    await fpa.connect(cust).newPolicy(rm.address, _W("0.57"), true, _A(1000), start + HOUR * 24, cust.address);
+    await helpers.time.increase(HOUR);
+    await oracle.setPrice(_W("0.559"));
+    const tx = await rm.triggerPolicy(makePolicyId(rm.address, 1));
+
+    // The exchange was made using the swap router funds
+    await expect(tx).to.changeEtherBalance(gelato, _W("0.013371337")); // sanity check that the fee was paid
+    await expect(tx).to.changeTokenBalance(wmatic, swapRouter, _W("-0.013371337"));
+    await expect(tx).to.changeTokenBalance(currency, swapRouter, _A("0.007474") /* $0.007474 fee */);
+  });
+
+  it("Only allows withdrawing funds to guardian", async () => {
+    const { guardian, currency, signers, swapRouter, wmatic } = await helpers.loadFixture(swapRouterMockFixture);
+
+    expect(await swapRouter.hasRole(getRole("GUARDIAN_ROLE"), signers[1].address)).to.be.false;
+    await expect(swapRouter.connect(signers[1]).withdraw(ADDRESSES.ETH, _W(1))).to.be.revertedWith(
+      accessControlMessage(signers[1].address, null, "GUARDIAN_ROLE")
+    );
+    await expect(swapRouter.connect(signers[1]).withdraw(currency.address, _A(100))).to.be.revertedWith(
+      accessControlMessage(signers[1].address, null, "GUARDIAN_ROLE")
+    );
+
+    await expect(swapRouter.connect(guardian).withdraw(wmatic.address, _W(1))).to.changeTokenBalance(
+      wmatic,
+      guardian,
+      _W(1)
+    );
+    await expect(swapRouter.connect(guardian).withdraw(currency.address, _A(100))).to.changeTokenBalance(
+      currency,
+      guardian,
+      _A(100)
+    );
+  });
+
+  it("Can do exactInputSingle swaps", async () => {
+    const { currency, admin, oracle, marketMaker, swapRouter, wmatic } = await helpers.loadFixture(
+      swapRouterMockFixture
+    );
+
+    const swapExactInputParams = [
+      currency.address, // address tokenIn;
+      wmatic.address, // address tokenOut;
+      100, // uint24 fee;
+      marketMaker.address, // address recipient;
+      (await helpers.time.latest()) + 3600, // uint256 deadline;
+      _A("10"), // uint256 amountIn;
+      _W("15"), // uint256 amountOutMinimum;
+      0, // uint160 sqrtPriceLimitX96;
+    ];
+    await expect(swapRouter.connect(marketMaker).exactInputSingle(swapExactInputParams)).to.be.revertedWith(
+      accessControlMessage(marketMaker.address, null, "SWAP_ROLE")
+    );
+    await grantRole(hre, swapRouter.connect(admin), "SWAP_ROLE", marketMaker);
+    await currency.connect(marketMaker).approve(swapRouter.address, _A(10));
+    await oracle.setPrice(_W("0.64"));
+    const swapTx = await swapRouter.connect(marketMaker).exactInputSingle(swapExactInputParams);
+    await expect(swapTx).to.changeTokenBalance(currency, marketMaker, _A("-10"));
+    await expect(swapTx).to.changeTokenBalance(wmatic, marketMaker, _W("15.625"));
+  });
+
+  it("Supports a configurable slippage", async () => {
+    const { guardian, currency, admin, cust, oracle, marketMaker, swapRouter, wmatic } = await helpers.loadFixture(
+      swapRouterMockFixture
+    );
+    expect(await swapRouter.slippage()).to.equal(_W("1"));
+    await expect(swapRouter.connect(cust).setSlippage(_W("0.01"))).to.be.revertedWith(
+      accessControlMessage(cust.address, null, "GUARDIAN_ROLE")
+    );
+    await expect(swapRouter.connect(guardian).setSlippage(_W("1.02")))
+      .to.emit(swapRouter, "SlippageUpdated")
+      .withArgs(_W("1.02"));
+
+    await oracle.setPrice(_W("0.62")); // 1 MATIC = $0.62 + 2% = $0.6324.
+    await grantRole(hre, swapRouter.connect(admin), "SWAP_ROLE", marketMaker);
+    await currency.connect(marketMaker).approve(swapRouter.address, _A(10));
+
+    let swapExactOutputParams = await makeExactOutputParams(marketMaker.address, _W("1"), _A("0.63"));
+    await expect(swapRouter.connect(marketMaker).exactOutputSingle(swapExactOutputParams)).to.be.revertedWith(
+      "amountInMaximum exceeded"
+    );
+
+    swapExactOutputParams = await makeExactOutputParams(marketMaker.address, _W("1"), _A("0.6324"));
+    const swapOutputTx = await swapRouter.connect(marketMaker).exactOutputSingle(swapExactOutputParams);
+    await expect(swapOutputTx).to.changeTokenBalance(currency, marketMaker, _A("-0.6324"));
+    await expect(swapOutputTx).to.changeTokenBalance(wmatic, marketMaker, _W("1"));
+
+    const swapExactInputParams = [
+      currency.address, // address tokenIn;
+      wmatic.address, // address tokenOut;
+      100, // uint24 fee;
+      marketMaker.address, // address recipient;
+      (await helpers.time.latest()) + 3600, // uint256 deadline;
+      _A("0.6324"), // uint256 amountIn;
+      _W("1"), // uint256 amountOutMinimum;
+      0, // uint160 sqrtPriceLimitX96;
+    ];
+
+    const swapInputTx = await swapRouter.connect(marketMaker).exactInputSingle(swapExactInputParams);
+    await expect(swapInputTx).to.changeTokenBalance(currency, marketMaker, _A("-0.6324"));
+    await expect(swapInputTx).to.changeTokenBalance(wmatic, marketMaker, _W("1"));
+  });
+
+  async function makeExactOutputParams(recipient, amountOut, amountInMaximum, params) {
+    params = params || {};
+    return [
+      params.tokenIn || ADDRESSES.USDC, // address tokenIn;
+      params.tokenOut || ADDRESSES.WMATIC, // address tokenOut;
+      params.fee || 100, // uint24 fee;
+      recipient, // address recipient;
+      params.deadline || (await helpers.time.latest()) + 3600, // uint256 deadline;
+      amountOut, // uint256 amountOut;
+      amountInMaximum, // uint256 amountInMaximum;
+      params.sqrtPriceLimitX96 || 0, // uint160 sqrtPriceLimitX96;
+    ];
+  }
+});
+
+async function swapRouterMockFixture() {
+  const { fpa, gelato, guardian, currency, admin, cust, rm, oracle, marketMaker, signers } = await helpers.loadFixture(
+    forwardPayoutAutomationFixture
+  );
+
+  const SwapRouterMock = await ethers.getContractFactory("SwapRouterMock");
+  const swapRouter = await SwapRouterMock.deploy(admin.address, currency.address);
+  await swapRouter.deployed();
+  await grantRole(hre, swapRouter.connect(admin), "GUARDIAN_ROLE", guardian);
+  await swapRouter.connect(guardian).setOracle(ADDRESSES.WMATIC, oracle.address);
+
+  // Deposit some WMATIC in the swap router
+  await helpers.setBalance(marketMaker.address, _W(10000));
+  const wmatic = await ethers.getContractAt("IWETH9", ADDRESSES.WMATIC);
+  await wmatic.connect(marketMaker).deposit({ value: _W(1000) });
+  await wmatic.connect(marketMaker).transfer(swapRouter.address, _W(1000));
+
+  // Deposit some USDC in the swap router
+  await currency.connect(marketMaker).transfer(swapRouter.address, _A(20000));
+
+  return {
+    fpa,
+    gelato,
+    guardian,
+    currency,
+    admin,
+    cust,
+    rm,
+    oracle,
+    marketMaker,
+    signers,
+    SwapRouterMock,
+    swapRouter,
+    wmatic,
+  };
+}
+
+async function forwardPayoutAutomationFixture() {
   setupChain(48475972);
 
-  const [owner, lp, cust, gelato, admin, guardian, ...signers] = await ethers.getSigners();
+  const [owner, lp, cust, gelato, admin, guardian, marketMaker, ...signers] = await ethers.getSigners();
 
-  const currency = await initForkCurrency(ADDRESSES.USDC, ADDRESSES.USDCWhale, [lp, cust], [_A("8000"), _A("500")]);
+  const currency = await initForkCurrency(
+    ADDRESSES.USDC,
+    ADDRESSES.USDCWhale,
+    [lp, cust, marketMaker],
+    [_A("8000"), _A("500"), _A("100000")]
+  );
 
   const pool = await deployPool({
     currency: currency.address,
@@ -374,6 +555,7 @@ async function deployPoolFixture() {
     guardian,
     jrEtk,
     lp,
+    marketMaker,
     oracle,
     owner,
     pool,
