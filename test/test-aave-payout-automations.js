@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const hre = require("hardhat");
 const { ethers } = hre;
-const { AddressZero, MaxUint256 } = ethers.constants;
+const { ZeroAddress, MaxUint256 } = ethers;
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { anyUint } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
 const { _W, _E, amountFunction, grantComponentRole, makePolicyId } = require("@ensuro/core/js/utils");
@@ -49,12 +49,12 @@ describe("Test AAVE payout automation contracts", function () {
       const { pool, ...others } = await helpers.loadFixture(deployPoolFixture);
       const contractClass = others[contractName];
       await expect(
-        contractClass.deploy(AddressZero, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, AddressZero)
+        contractClass.deploy(ZeroAddress, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, ZeroAddress)
       ).to.be.revertedWith("PayoutAutomationBase: policyPool_ cannot be the zero address");
       await expect(
-        contractClass.deploy(pool.address, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, AddressZero)
+        contractClass.deploy(pool.target, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, ZeroAddress)
       ).to.be.revertedWith(`${contractName}: you must specify AAVE's Pool address`);
-      await expect(contractClass.deploy(pool.address, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, ADDRESSES.aaveV3)).not.to.be
+      await expect(contractClass.deploy(pool.target, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, ADDRESSES.aaveV3)).not.to.be
         .reverted;
     });
 
@@ -63,15 +63,15 @@ describe("Test AAVE payout automation contracts", function () {
       const contractClass = others[contractName];
       const ps = await hre.upgrades.deployProxy(
         contractClass,
-        ["The Name", "SYMB", lp.address, maticOracle.address, ADDRESSES.SwapRouter, _A("0.0005")],
+        ["The Name", "SYMB", lp.address, maticOracle.target, ADDRESSES.SwapRouter, _A("0.0005")],
         {
           kind: "uups",
-          constructorArgs: [pool.address, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
+          constructorArgs: [pool.target, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
         }
       );
 
       await expect(
-        ps.initialize("Another Name", "SYMB", lp.address, maticOracle.address, ADDRESSES.SwapRouter, _A("0.0005"))
+        ps.initialize("Another Name", "SYMB", lp.address, maticOracle.target, ADDRESSES.SwapRouter, _A("0.0005"))
       ).to.be.revertedWith("Initializable: contract is already initialized");
     });
   });
@@ -79,37 +79,37 @@ describe("Test AAVE payout automation contracts", function () {
   it("Should do infinite approval on initialization - AAVERepayPayoutAutomation", async () => {
     const ret = await helpers.loadFixture(deployPoolFixture);
     const { ps, currency } = await deployPoolWRepayAutoFixture(ret);
-    expect(await currency.allowance(ps.address, ADDRESSES.aaveV3)).to.be.equal(MaxUint256);
+    expect(await currency.allowance(ps.target, ADDRESSES.aaveV3)).to.be.equal(MaxUint256);
   });
 
   it("Should do infinite approval on initialization - AAVEBuyEthPayoutAutomation", async () => {
     const ret = await helpers.loadFixture(deployPoolFixture);
     const { ps, wmatic } = await deployPoolWBuyEthAutoFixture(ret);
-    expect(await wmatic.allowance(ps.address, ADDRESSES.aaveV3)).to.be.equal(MaxUint256);
+    expect(await wmatic.allowance(ps.target, ADDRESSES.aaveV3)).to.be.equal(MaxUint256);
   });
 
   it("Can create the policy through the ps and since there's no debt, deposits in AAVE", async () => {
     const ret = await helpers.loadFixture(deployPoolFixture);
     const { pool, ps, rm, oracle, currency, aUSDC, cust } = await deployPoolWRepayAutoFixture(ret);
     const start = await helpers.time.latest();
-    await currency.connect(cust).approve(ps.address, _A(2000));
+    await currency.connect(cust).approve(ps.target, _A(2000));
 
     // Create two policies, one with 1400 as price and the other with 1200
-    const policyId = makePolicyId(rm.address, 1);
-    await expect(ps.connect(cust).newPolicy(rm.address, _W(1400), true, _A(1000), start + HOUR * 24, cust.address))
+    const policyId = makePolicyId(rm.target, 1);
+    await expect(ps.connect(cust).newPolicy(rm.target, _W(1400), true, _A(1000), start + HOUR * 24, cust.address))
       .to.emit(ps, "Transfer")
-      .withArgs(AddressZero, cust.address, policyId)
+      .withArgs(ZeroAddress, cust.address, policyId)
       .to.emit(pool, "Transfer")
-      .withArgs(AddressZero, ps.address, policyId);
+      .withArgs(ZeroAddress, ps.target, policyId);
 
-    await expect(ps.connect(cust).newPolicy(rm.address, _W(1200), true, _A(700), start + HOUR * 24, cust.address)).not
-      .to.be.reverted;
+    await expect(ps.connect(cust).newPolicy(rm.target, _W(1200), true, _A(700), start + HOUR * 24, cust.address)).not.to
+      .be.reverted;
 
-    const policyId2 = makePolicyId(rm.address, 2);
+    const policyId2 = makePolicyId(rm.target, 2);
 
-    expect(await pool.ownerOf(policyId)).to.be.equal(ps.address);
+    expect(await pool.ownerOf(policyId)).to.be.equal(ps.target);
     expect(await ps.ownerOf(policyId)).to.be.equal(cust.address);
-    expect(await pool.ownerOf(policyId2)).to.be.equal(ps.address);
+    expect(await pool.ownerOf(policyId2)).to.be.equal(ps.target);
     expect(await ps.ownerOf(policyId2)).to.be.equal(cust.address);
 
     await helpers.time.increase(HOUR);
@@ -121,8 +121,8 @@ describe("Test AAVE payout automation contracts", function () {
     await expect(pool.expirePolicy(policy2)).not.to.be.reverted;
 
     // Pool NFT ownership doesn't changes when policies are triggered or expired
-    expect(await pool.ownerOf(policyId)).to.be.equal(ps.address);
-    expect(await pool.ownerOf(policyId2)).to.be.equal(ps.address);
+    expect(await pool.ownerOf(policyId)).to.be.equal(ps.target);
+    expect(await pool.ownerOf(policyId2)).to.be.equal(ps.target);
     // But FPS NFTs are burnt
     await expect(ps.ownerOf(policyId)).to.be.revertedWith("ERC721: invalid token ID");
     await expect(ps.ownerOf(policyId2)).to.be.revertedWith("ERC721: invalid token ID");
@@ -134,28 +134,28 @@ describe("Test AAVE payout automation contracts", function () {
       await deployPoolWRepayAutoFixture(ret);
     const start = await helpers.time.latest();
 
-    await currency.connect(cust).approve(ps.address, MaxUint256);
+    await currency.connect(cust).approve(ps.target, MaxUint256);
 
     await depositAndTakeDebt(aave, currency, wmatic, aUSDCDebtStable, cust, _E("10000"), _A(1300));
     await depositAndTakeDebt(aave, currency, wmatic, aUSDCDebtVariable, cust2, _E("10000"), _A(800));
 
     // Create two policies, one with 1400 as price and the other with 1200
-    const policyId = makePolicyId(rm.address, 1);
-    await expect(ps.connect(cust).newPolicy(rm.address, _W(1400), true, _A(1000), start + HOUR * 24, cust.address))
+    const policyId = makePolicyId(rm.target, 1);
+    await expect(ps.connect(cust).newPolicy(rm.target, _W(1400), true, _A(1000), start + HOUR * 24, cust.address))
       .to.emit(ps, "Transfer")
-      .withArgs(AddressZero, cust.address, policyId)
+      .withArgs(ZeroAddress, cust.address, policyId)
       .to.emit(pool, "Transfer")
-      .withArgs(AddressZero, ps.address, policyId);
+      .withArgs(ZeroAddress, ps.target, policyId);
 
     // Paid by cust, but onBehalfOf cust2
-    await expect(ps.connect(cust).newPolicy(rm.address, _W(1200), true, _A(700), start + HOUR * 24, cust2.address)).not
+    await expect(ps.connect(cust).newPolicy(rm.target, _W(1200), true, _A(700), start + HOUR * 24, cust2.address)).not
       .to.be.reverted;
 
-    const policyId2 = makePolicyId(rm.address, 2);
+    const policyId2 = makePolicyId(rm.target, 2);
 
-    expect(await pool.ownerOf(policyId)).to.be.equal(ps.address);
+    expect(await pool.ownerOf(policyId)).to.be.equal(ps.target);
     expect(await ps.ownerOf(policyId)).to.be.equal(cust.address);
-    expect(await pool.ownerOf(policyId2)).to.be.equal(ps.address);
+    expect(await pool.ownerOf(policyId2)).to.be.equal(ps.target);
     expect(await ps.ownerOf(policyId2)).to.be.equal(cust2.address);
 
     await helpers.time.increase(HOUR);
@@ -163,14 +163,12 @@ describe("Test AAVE payout automation contracts", function () {
 
     // Repays stable debt
     let before = await aUSDCDebtStable.balanceOf(cust.address);
-    await expect(rm.triggerPolicy(policyId)).to.emit(currency, "Transfer").withArgs(ps.address, aUSDC.address, anyUint);
+    await expect(rm.triggerPolicy(policyId)).to.emit(currency, "Transfer").withArgs(ps.target, aUSDC.target, anyUint);
     expect(before.sub(await aUSDCDebtStable.balanceOf(cust.address))).to.be.closeTo(_A(1000), _A("0.01"));
 
     // Repays variable debt
     before = await aUSDCDebtVariable.balanceOf(cust2.address);
-    await expect(rm.triggerPolicy(policyId2))
-      .to.emit(currency, "Transfer")
-      .withArgs(ps.address, aUSDC.address, anyUint);
+    await expect(rm.triggerPolicy(policyId2)).to.emit(currency, "Transfer").withArgs(ps.target, aUSDC.target, anyUint);
     expect(before.sub(await aUSDCDebtVariable.balanceOf(cust2.address))).to.be.closeTo(_A(700), _A("0.01"));
   });
 
@@ -180,17 +178,17 @@ describe("Test AAVE payout automation contracts", function () {
       await deployPoolWRepayAutoFixture(ret);
     const start = await helpers.time.latest();
 
-    await currency.connect(cust).approve(ps.address, MaxUint256);
+    await currency.connect(cust).approve(ps.target, MaxUint256);
 
     await depositAndTakeDebt(aave, currency, wmatic, aUSDCDebtStable, cust, _E("5000"), _A(300));
     await depositAndTakeDebt(aave, currency, wmatic, aUSDCDebtVariable, cust, _E("5000"), _A(400));
 
-    const policyId = makePolicyId(rm.address, 1);
-    await expect(ps.connect(cust).newPolicy(rm.address, _W(1400), true, _A(1000), start + HOUR * 24, cust.address))
+    const policyId = makePolicyId(rm.target, 1);
+    await expect(ps.connect(cust).newPolicy(rm.target, _W(1400), true, _A(1000), start + HOUR * 24, cust.address))
       .to.emit(ps, "Transfer")
-      .withArgs(AddressZero, cust.address, policyId)
+      .withArgs(ZeroAddress, cust.address, policyId)
       .to.emit(pool, "Transfer")
-      .withArgs(AddressZero, ps.address, policyId);
+      .withArgs(ZeroAddress, ps.target, policyId);
 
     await helpers.time.increase(HOUR);
     await oracle.setPrice(_E("1390"));
@@ -220,24 +218,24 @@ describe("Test AAVE payout automation contracts", function () {
     const { pool, ps, rm, oracle, currency, aave, cust, wmatic, aWMATIC, maticOracle } =
       await deployPoolWBuyEthAutoFixture(ret);
     const start = await helpers.time.latest();
-    await currency.connect(cust).approve(ps.address, _A(2000));
+    await currency.connect(cust).approve(ps.target, _A(2000));
 
     // Create two policies, one with 1400 as price and the other with 1200
-    const policyId = makePolicyId(rm.address, 1);
-    await expect(ps.connect(cust).newPolicy(rm.address, _W(1400), true, _A(1000), start + HOUR * 24, cust.address))
+    const policyId = makePolicyId(rm.target, 1);
+    await expect(ps.connect(cust).newPolicy(rm.target, _W(1400), true, _A(1000), start + HOUR * 24, cust.address))
       .to.emit(ps, "Transfer")
-      .withArgs(AddressZero, cust.address, policyId)
+      .withArgs(ZeroAddress, cust.address, policyId)
       .to.emit(pool, "Transfer")
-      .withArgs(AddressZero, ps.address, policyId);
+      .withArgs(ZeroAddress, ps.target, policyId);
 
-    await expect(ps.connect(cust).newPolicy(rm.address, _W(1200), true, _A("0.005"), start + HOUR * 24, cust.address))
+    await expect(ps.connect(cust).newPolicy(rm.target, _W(1200), true, _A("0.005"), start + HOUR * 24, cust.address))
       .not.to.be.reverted;
 
-    const policyId2 = makePolicyId(rm.address, 2);
+    const policyId2 = makePolicyId(rm.target, 2);
 
-    expect(await pool.ownerOf(policyId)).to.be.equal(ps.address);
+    expect(await pool.ownerOf(policyId)).to.be.equal(ps.target);
     expect(await ps.ownerOf(policyId)).to.be.equal(cust.address);
-    expect(await pool.ownerOf(policyId2)).to.be.equal(ps.address);
+    expect(await pool.ownerOf(policyId2)).to.be.equal(ps.target);
     expect(await ps.ownerOf(policyId2)).to.be.equal(cust.address);
 
     await helpers.time.increase(HOUR);
@@ -253,7 +251,7 @@ describe("Test AAVE payout automation contracts", function () {
 
     await expect(rm.triggerPolicy(policyId))
       .to.emit(aave, "Supply")
-      .withArgs(wmatic.address, ps.address, cust.address, _E("1888.408885662289522076"), 0);
+      .withArgs(wmatic.target, ps.target, cust.address, _E("1888.408885662289522076"), 0);
 
     expect(await aWMATIC.balanceOf(cust.address)).to.be.closeTo(_E("1888.40"), _E("0.10"));
 
@@ -269,11 +267,11 @@ describe("Test AAVE payout automation contracts", function () {
   });
 
   async function depositAndTakeDebt(aave, usdc, wmatic, debtToken, user, depositAmount, borrowAmount) {
-    await wmatic.connect(user).approve(aave.address, MaxUint256);
-    await aave.connect(user).deposit(wmatic.address, depositAmount, user.address, 0);
+    await wmatic.connect(user).approve(aave.target, MaxUint256);
+    await aave.connect(user).deposit(wmatic.target, depositAmount, user.address, 0);
     await aave
       .connect(user)
-      .borrow(usdc.address, borrowAmount, debtToken.address == ADDRESSES.aUSDCDebtStable ? 1 : 2, 0, user.address);
+      .borrow(usdc.target, borrowAmount, debtToken.target == ADDRESSES.aUSDCDebtStable ? 1 : 2, 0, user.address);
     expect(await debtToken.balanceOf(user.address)).to.be.closeTo(borrowAmount, _A("0.0001"));
   }
 
@@ -313,16 +311,16 @@ describe("Test AAVE payout automation contracts", function () {
     const jrEtk = await addEToken(pool, {});
 
     const premiumsAccount = await deployPremiumsAccount(pool, {
-      srEtkAddr: srEtk.address,
-      jrEtkAddr: jrEtk.address,
+      srEtkAddr: srEtk.target,
+      jrEtkAddr: jrEtk.target,
     });
 
     const accessManager = await ethers.getContractAt("AccessManager", await pool.access());
 
-    await currency.connect(lp).approve(pool.address, _A("8000"));
-    await currency.connect(cust).approve(pool.address, _A("500"));
-    await pool.connect(lp).deposit(srEtk.address, _A("5000"));
-    await pool.connect(lp).deposit(jrEtk.address, _A("3000"));
+    await currency.connect(lp).approve(pool.target, _A("8000"));
+    await currency.connect(cust).approve(pool.target, _A("500"));
+    await pool.connect(lp).deposit(srEtk.target, _A("5000"));
+    await pool.connect(lp).deposit(jrEtk.target, _A("3000"));
 
     const PriceOracleMock = await ethers.getContractFactory("PriceOracleMock");
     const oracle = await PriceOracleMock.deploy(_W(1500));
@@ -331,7 +329,7 @@ describe("Test AAVE payout automation contracts", function () {
     const PriceRiskModule = await ethers.getContractFactory("PriceRiskModule");
     const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
       extraConstructorArgs: [_W("0.01")],
-      extraArgs: [oracle.address],
+      extraArgs: [oracle.target],
     });
 
     await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
@@ -372,10 +370,10 @@ describe("Test AAVE payout automation contracts", function () {
 
     const ps = await hre.upgrades.deployProxy(
       ret.AAVERepayPayoutAutomation,
-      ["The Name", "SYMB", ret.lp.address, ret.maticOracle.address, ADDRESSES.SwapRouter, _A("0.0005")],
+      ["The Name", "SYMB", ret.lp.address, ret.maticOracle.target, ADDRESSES.SwapRouter, _A("0.0005")],
       {
         kind: "uups",
-        constructorArgs: [ret.pool.address, automate.address, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
+        constructorArgs: [ret.pool.target, automate.target, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
       }
     );
 
@@ -400,10 +398,10 @@ describe("Test AAVE payout automation contracts", function () {
 
     const ps = await hre.upgrades.deployProxy(
       ret.AAVEBuyEthPayoutAutomation,
-      ["The Name", "SYMB", ret.lp.address, ret.maticOracle.address, ADDRESSES.SwapRouter, _A("0.0005")],
+      ["The Name", "SYMB", ret.lp.address, ret.maticOracle.target, ADDRESSES.SwapRouter, _A("0.0005")],
       {
         kind: "uups",
-        constructorArgs: [ret.pool.address, automate.address, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
+        constructorArgs: [ret.pool.target, automate.target, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
       }
     );
     const aWMATIC = await ethers.getContractAt("IERC20Metadata", ADDRESSES.aWMATIC);

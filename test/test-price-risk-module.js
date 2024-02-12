@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const hre = require("hardhat");
 const { ethers } = hre;
-const { AddressZero } = ethers.constants;
+const { ZeroAddress } = ethers;
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const {
   _W,
@@ -55,7 +55,7 @@ describe("Test PriceRiskModule contract", function () {
   it("Should revert if oracle = address(0)", async () => {
     const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
 
-    const oracle = { address: AddressZero };
+    const oracle = { address: ZeroAddress };
 
     await expect(addPriceRiskModule(pool, premiumsAccount, oracle)).to.be.revertedWith(
       "PriceRiskModule: oracle_ cannot be the zero address"
@@ -97,7 +97,7 @@ describe("Test PriceRiskModule contract", function () {
 
     await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner.address);
 
-    await expect(rm.setOracle(AddressZero)).to.be.revertedWith("PriceRiskModule: oracle_ cannot be the zero address");
+    await expect(rm.setOracle(ZeroAddress)).to.be.revertedWith("PriceRiskModule: oracle_ cannot be the zero address");
 
     await expect(rm.setOracle(newOracle.address)).not.to.be.reverted;
 
@@ -193,7 +193,7 @@ describe("Test PriceRiskModule contract", function () {
     const { rm } = await addRiskModuleWithOracles(pool, premiumsAccount);
 
     await expect(
-      rm.connect(cust).newPolicy(_E("1.1"), true, _A(1000), await helpers.time.latest(), AddressZero)
+      rm.connect(cust).newPolicy(_E("1.1"), true, _A(1000), await helpers.time.latest(), ZeroAddress)
     ).to.be.revertedWith("onBehalfOf cannot be the zero address");
   });
 
@@ -618,7 +618,7 @@ describe("Test PriceRiskModule contract", function () {
     await expect(rm.triggerPolicy(1)).to.be.revertedWith("Pausable: paused");
 
     await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner.address);
-    await expect(rm.setOracle(AddressZero)).to.be.revertedWith("Pausable: paused");
+    await expect(rm.setOracle(ZeroAddress)).to.be.revertedWith("Pausable: paused");
 
     await expect(rm.setMinDuration(1800)).to.be.revertedWith("Pausable: paused");
   });

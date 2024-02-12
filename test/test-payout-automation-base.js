@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const hre = require("hardhat");
 const { ethers } = hre;
-const { AddressZero, HashZero } = ethers.constants;
+const { ZeroAddress, HashZero } = ethers;
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const {
   _W,
@@ -31,7 +31,7 @@ describe("Test PayoutAutomationBase contract", function () {
 
   it("Should fail if constructed with null address ", async () => {
     const { pool, DummyPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
-    await expect(DummyPayoutAutomation.deploy(AddressZero)).to.be.revertedWith(
+    await expect(DummyPayoutAutomation.deploy(ZeroAddress)).to.be.revertedWith(
       "PayoutAutomationBase: policyPool_ cannot be the zero address"
     );
     await expect(DummyPayoutAutomation.deploy(pool.address)).not.to.be.reverted;
@@ -51,7 +51,7 @@ describe("Test PayoutAutomationBase contract", function () {
 
   it("Shouldn't be administrable if created without admin", async () => {
     const { pool, DummyPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
-    const fps = await hre.upgrades.deployProxy(DummyPayoutAutomation, ["The Name", "SYMB", AddressZero], {
+    const fps = await hre.upgrades.deployProxy(DummyPayoutAutomation, ["The Name", "SYMB", ZeroAddress], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
@@ -79,7 +79,7 @@ describe("Test PayoutAutomationBase contract", function () {
 
   it("Should check event methods are only callable by the pool", async () => {
     const { pool, DummyPayoutAutomation } = await helpers.loadFixture(deployPoolFixture);
-    const fps = await hre.upgrades.deployProxy(DummyPayoutAutomation, ["The Name", "SYMB", AddressZero], {
+    const fps = await hre.upgrades.deployProxy(DummyPayoutAutomation, ["The Name", "SYMB", ZeroAddress], {
       kind: "uups",
       constructorArgs: [pool.address],
     });
@@ -152,7 +152,7 @@ describe("Test PayoutAutomationBase contract", function () {
 
     await expect(pool.connect(cust)[safeTransferFrom](cust.address, fps.address, policyId))
       .to.emit(fps, "Transfer")
-      .withArgs(AddressZero, cust.address, policyId);
+      .withArgs(ZeroAddress, cust.address, policyId);
 
     expect(await pool.ownerOf(policyId)).to.be.equal(fps.address);
     expect(await fps.ownerOf(policyId)).to.be.equal(cust.address);
@@ -164,7 +164,7 @@ describe("Test PayoutAutomationBase contract", function () {
     // Policy recovered by the customer
     await expect(fps.connect(cust).recoverPolicy(policyId))
       .to.emit(fps, "Transfer")
-      .withArgs(cust.address, AddressZero, policyId);
+      .withArgs(cust.address, ZeroAddress, policyId);
 
     expect(await pool.ownerOf(policyId)).to.be.equal(cust.address);
     await expect(fps.ownerOf(policyId)).to.be.revertedWith("ERC721: invalid token ID");
@@ -193,11 +193,11 @@ describe("Test PayoutAutomationBase contract", function () {
 
     await expect(pool.connect(cust)[safeTransferFrom](cust.address, fps.address, policyId))
       .to.emit(fps, "Transfer")
-      .withArgs(AddressZero, cust.address, policyId);
+      .withArgs(ZeroAddress, cust.address, policyId);
 
     await expect(pool.connect(cust)[safeTransferFrom](cust.address, fps.address, policyId2))
       .to.emit(fps, "Transfer")
-      .withArgs(AddressZero, cust.address, policyId2);
+      .withArgs(ZeroAddress, cust.address, policyId2);
 
     expect(await pool.ownerOf(policyId)).to.be.equal(fps.address);
     expect(await fps.ownerOf(policyId)).to.be.equal(cust.address);
@@ -244,9 +244,9 @@ describe("Test PayoutAutomationBase contract", function () {
     const policyId = makePolicyId(rm.address, 1);
     await expect(fps.connect(cust).newPolicy(rm.address, _W(1400), true, _A(1000), start + HOUR * 24, cust.address))
       .to.emit(fps, "Transfer")
-      .withArgs(AddressZero, cust.address, policyId)
+      .withArgs(ZeroAddress, cust.address, policyId)
       .to.emit(pool, "Transfer")
-      .withArgs(AddressZero, fps.address, policyId);
+      .withArgs(ZeroAddress, fps.address, policyId);
 
     await expect(fps.connect(cust).newPolicy(rm.address, _W(1200), true, _A(700), start + HOUR * 24, cust.address)).not
       .to.be.reverted;
@@ -388,9 +388,9 @@ describe("Test PayoutAutomationBase contract", function () {
         )
     )
       .to.emit(fps, "Transfer")
-      .withArgs(AddressZero, cust.address, policyId)
+      .withArgs(ZeroAddress, cust.address, policyId)
       .to.emit(pool, "Transfer")
-      .withArgs(AddressZero, fps.address, policyId);
+      .withArgs(ZeroAddress, fps.address, policyId);
 
     // Reuse of the same signature doesn't work
     await expect(
@@ -513,7 +513,7 @@ describe("Test PayoutAutomationBase contract", function () {
     const signature = await owner._signTypedData(domain, types, values);
 
     // split the signature into its components
-    const sig = ethers.utils.splitSignature(signature);
+    const sig = ethers.Signature.from(signature);
     return sig;
   }
 
