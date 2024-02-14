@@ -10,6 +10,7 @@ import {IWETH9} from "../dependencies/uniswap-v3/IWETH9.sol";
 import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
 
 contract ForwardPayoutAutomation is PayoutAutomationBaseGelato {
+  using SwapLibrary for SwapLibrary.SwapConfig;
   using SafeERC20 for IERC20Metadata;
 
   /// @custom:oz-upgrades-unsafe-allow constructor

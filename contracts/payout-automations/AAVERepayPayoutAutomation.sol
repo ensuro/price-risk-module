@@ -12,6 +12,8 @@ import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
 import {DataTypes} from "../dependencies/aave-v3/DataTypes.sol";
 
 contract AAVERepayPayoutAutomation is PayoutAutomationBaseGelato {
+  using SwapLibrary for SwapLibrary.SwapConfig;
+
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IPool internal immutable _aave;
 
