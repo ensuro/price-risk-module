@@ -2,13 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
-import {IPolicyPool} from "@ensuro/core/contracts/interfaces/IPolicyPool.sol";
-import {IPremiumsAccount} from "@ensuro/core/contracts/interfaces/IPremiumsAccount.sol";
-import {RiskModule} from "@ensuro/core/contracts/RiskModule.sol";
-import {Policy} from "@ensuro/core/contracts/Policy.sol";
 import {WadRayMath} from "@ensuro/core/contracts/dependencies/WadRayMath.sol";
 import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
 
@@ -87,11 +81,10 @@ contract ChainlinkPriceOracle is IPriceOracle {
    * @param quote the aggregator for the quote asset.
    * @return The exchange rate from/to in Wad
    */
-  function _getExchangeRate(AggregatorV3Interface base, AggregatorV3Interface quote)
-    internal
-    view
-    returns (uint256)
-  {
+  function _getExchangeRate(
+    AggregatorV3Interface base,
+    AggregatorV3Interface quote
+  ) internal view returns (uint256) {
     uint256 basePrice = _scalePrice(_getLatestPrice(base), base.decimals(), WAD_DECIMALS);
     require(basePrice != 0, "Price from not available");
 
@@ -113,8 +106,8 @@ contract ChainlinkPriceOracle is IPriceOracle {
     uint8 priceDecimals,
     uint8 decimals
   ) internal pure returns (uint256) {
-    if (priceDecimals < decimals) return price * 10**(decimals - priceDecimals);
-    else return price / 10**(priceDecimals - decimals);
+    if (priceDecimals < decimals) return price * 10 ** (decimals - priceDecimals);
+    else return price / 10 ** (priceDecimals - decimals);
   }
 
   function referenceOracle() external view returns (AggregatorV3Interface) {

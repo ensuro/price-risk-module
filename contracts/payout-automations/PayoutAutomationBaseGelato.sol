@@ -32,7 +32,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IWETH9 internal immutable weth;
 
-  SwapLibrary.SwapConfig _swapConfig;
+  SwapLibrary.SwapConfig internal _swapConfig;
 
   /**
    * @dev Oracle for the price of gas tokens in the currency of the policy pool

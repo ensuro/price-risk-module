@@ -278,11 +278,10 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
    *                 negative if probability of higher price
    * @param cdf Array where cdf[i] = prob of price lower/higher than i% of current price
    */
-  function setCDF(int40 duration, SlotPricing[PRICE_SLOTS] calldata cdf)
-    external
-    onlyComponentRole(PRICER_ROLE)
-    whenNotPaused
-  {
+  function setCDF(
+    int40 duration,
+    SlotPricing[PRICE_SLOTS] calldata cdf
+  ) external onlyComponentRole(PRICER_ROLE) whenNotPaused {
     require(duration != 0, "|duration| < 1");
     for (uint256 i = 0; i < PRICE_SLOTS; i++) {
       require(
@@ -307,11 +306,9 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
    * @dev Sets the minimum duration before a policy can be triggered
    * @param minDuration_ The new minimum duration in seconds.
    */
-  function setMinDuration(uint40 minDuration_)
-    external
-    onlyComponentRole(ORACLE_ADMIN_ROLE)
-    whenNotPaused
-  {
+  function setMinDuration(
+    uint40 minDuration_
+  ) external onlyComponentRole(ORACLE_ADMIN_ROLE) whenNotPaused {
     _state.minDuration = uint32(minDuration_);
     _parameterChanged(IAccessManager.GovernanceActions.rmFiller2, uint256(minDuration_), false);
   }
@@ -320,11 +317,9 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
    * @dev Changes the price oracle
    * @param oracle_ The new price oracle to use.
    */
-  function setOracle(IPriceOracle oracle_)
-    external
-    onlyComponentRole(ORACLE_ADMIN_ROLE)
-    whenNotPaused
-  {
+  function setOracle(
+    IPriceOracle oracle_
+  ) external onlyComponentRole(ORACLE_ADMIN_ROLE) whenNotPaused {
     require(address(oracle_) != address(0), "PriceRiskModule: oracle_ cannot be the zero address");
     _state.oracle = oracle_;
     _parameterChanged(

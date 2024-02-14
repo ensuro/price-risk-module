@@ -41,7 +41,7 @@ contract SwapRouterMock is AccessControl, ISwapRouter {
     _setupRole(DEFAULT_ADMIN_ROLE, admin);
 
     _tokenIn = tokenIn_;
-    _wadToTokenInFactor = (10**(18 - _tokenIn.decimals()));
+    _wadToTokenInFactor = (10 ** (18 - _tokenIn.decimals()));
 
     _slippage = 1e18; // 100%
     emit SlippageUpdated(_slippage);
@@ -50,12 +50,9 @@ contract SwapRouterMock is AccessControl, ISwapRouter {
   /**
    * @inheritdoc ISwapRouter
    */
-  function exactInputSingle(ExactInputSingleParams calldata params)
-    external
-    payable
-    onlyRole(SWAP_ROLE)
-    returns (uint256 amountOut)
-  {
+  function exactInputSingle(
+    ExactInputSingleParams calldata params
+  ) external payable onlyRole(SWAP_ROLE) returns (uint256 amountOut) {
     require(params.tokenIn == address(_tokenIn), "TokenIn not supported");
     require(address(_oracles[params.tokenOut]) != address(0), "TokenOut not supported");
     require(params.recipient != address(0), "Recipient cannot be zero address");
@@ -74,12 +71,9 @@ contract SwapRouterMock is AccessControl, ISwapRouter {
   /**
    * @inheritdoc ISwapRouter
    */
-  function exactOutputSingle(ExactOutputSingleParams calldata params)
-    external
-    payable
-    onlyRole(SWAP_ROLE)
-    returns (uint256 amountIn)
-  {
+  function exactOutputSingle(
+    ExactOutputSingleParams calldata params
+  ) external payable onlyRole(SWAP_ROLE) returns (uint256 amountIn) {
     require(params.tokenIn == address(_tokenIn), "TokenIn not supported");
     require(address(_oracles[params.tokenOut]) != address(0), "TokenOut not supported");
     require(params.recipient != address(0), "Recipient cannot be zero address");
@@ -151,11 +145,7 @@ contract SwapRouterMock is AccessControl, ISwapRouter {
   /**
    * @notice This function is not implemented
    */
-  function uniswapV3SwapCallback(
-    int256,
-    int256,
-    bytes calldata
-  ) external pure {
+  function uniswapV3SwapCallback(int256, int256, bytes calldata) external pure {
     revert("Not implemented");
   }
 }
