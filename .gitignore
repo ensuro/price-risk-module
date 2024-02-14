@@ -10,3 +10,7 @@ cache
 artifacts
 
 .openzeppelin
+
+contracts/.DS_Store
+
+.DS_Store
