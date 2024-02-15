@@ -62,20 +62,16 @@ contract AAVEBuyEthPayoutAutomation is PayoutAutomationBaseGelato {
     (uint256 fee, address feeToken) = _getFeeDetails();
     require(feeToken == ETH, "Unsupported feeToken for gelato payment");
 
-    uint256 ethMin = (amount * _wadToCurrencyFactor).wadDiv(_oracle.getCurrentPrice()).wadMul(
-      WAD - _swapConfig.maxSlippage
-    );
-
     uint256 receivedEth = _swapConfig.exactInput(
       address(_policyPool.currency()),
       address(weth),
       amount,
-      ethMin
+      _oracle.getCurrentPrice()
     );
 
     // Sanity check
     require(
-      (receivedEth >= ethMin) && (receivedEth >= fee),
+      receivedEth >= fee,
       "AAVEBuyEthPayoutAutomation: the payout is not enough to cover the tx fees"
     );
 

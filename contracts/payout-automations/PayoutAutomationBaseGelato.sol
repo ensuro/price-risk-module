@@ -145,13 +145,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
       address(_policyPool.currency()),
       address(weth),
       fee,
-      feeInUSDC
-    );
-
-    // Sanity check
-    require(
-      actualFeeInUSDC <= feeInUSDC,
-      "ForwardPayoutAutomationGelato: exchange rate higher than tolerable"
+      _oracle.getCurrentPrice()
     );
 
     // Convert the WMATIC to MATIC for fee payment
