@@ -150,6 +150,8 @@ describe("Test Gelato Task Creation / Execution", function () {
       "SwapLibrary: SwapRouter address cannot be zero"
     );
 
+    await expect(fpa.connect(guardian).setSwapConfig([3, _W("0.04"), swapDefaultParams])).to.be.reverted;
+
     // some random address as router
     let randomZeroAddr = ethers.utils.defaultAbiCoder.encode(["uint24", "address"], [_A("0.0005"), signers[1].address]);
     await expect(fpa.connect(guardian).setSwapConfig([0, _W("0.05"), randomZeroAddr]))
