@@ -152,12 +152,12 @@ describe("Test Gelato Task Creation / Execution", function () {
 
     // some random address as router
     let randomZeroAddr = ethers.utils.defaultAbiCoder.encode(["uint24", "address"], [_A("0.0005"), signers[1].address]);
-    await expect(fpa.connect(guardian).setSwapConfig([2, _W("0.05"), randomZeroAddr]))
+    await expect(fpa.connect(guardian).setSwapConfig([0, _W("0.05"), randomZeroAddr]))
       .to.emit(fpa, "SwapConfigSet")
-      .withArgs([2, _W("0.05"), randomZeroAddr]);
+      .withArgs([0, _W("0.05"), randomZeroAddr]);
 
     swapConfig = await fpa.swapConfig();
-    expect(swapConfig.protocol).to.equal(2);
+    expect(swapConfig.protocol).to.equal(0);
     expect(swapConfig.maxSlippage).to.equal(_W("0.05"));
     expect(swapConfig.customParams).to.equal(randomZeroAddr);
   });

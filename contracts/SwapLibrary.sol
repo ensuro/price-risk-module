@@ -31,10 +31,6 @@ library SwapLibrary {
 
   function validate(SwapConfig calldata swapConfig) external pure {
     require(swapConfig.maxSlippage > 0, "SwapLibrary: maxSlippage cannot be zero");
-    require(
-      swapConfig.protocol >= SwapProtocol.undefined && swapConfig.protocol <= SwapProtocol.uniswap,
-      "SwapLibrary: Invalid protocol"
-    );
     if (swapConfig.protocol == SwapProtocol.uniswap) {
       (uint24 feeTier_, ISwapRouter router_) = abi.decode(
         swapConfig.customParams,
