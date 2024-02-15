@@ -78,6 +78,7 @@ library SwapLibrary {
         swapConfig.customParams,
         (uint24, ISwapRouter)
       );
+      IERC20Metadata(tokenIn).approve(address(router_), amount);
       ISwapRouter.ExactOutputSingleParams memory params = ISwapRouter.ExactOutputSingleParams({
         tokenIn: tokenIn,
         tokenOut: tokenOut,

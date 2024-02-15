@@ -225,6 +225,10 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     emit SwapConfigSet(swapConfig_);
   }
 
+  function swapConfig() external view returns (SwapLibrary.SwapConfig memory) {
+    return _swapConfig;
+  }
+
   // Need to receive gas tokens when unwrapping.
   receive() external payable {}
 

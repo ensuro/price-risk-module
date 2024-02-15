@@ -59,19 +59,20 @@ describe("Test AAVE payout automation contracts", function () {
     });
 
     it(`Should never allow reinitialization - ${contractName}`, async () => {
-      const { pool, maticOracle, lp, ...others } = await helpers.loadFixture(deployPoolFixture);
+      const { pool, maticOracle, swapDefaultParams, lp, ...others } = await helpers.loadFixture(deployPoolFixture);
       const contractClass = others[contractName];
       const ps = await hre.upgrades.deployProxy(
         contractClass,
-        ["The Name", "SYMB", lp.address, maticOracle.address, ADDRESSES.SwapRouter, _A("0.0005")],
+        ["The Name", "SYMB", lp.address, maticOracle.address, [1, _W("0.02"), swapDefaultParams]],
         {
           kind: "uups",
           constructorArgs: [pool.address, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
+          unsafeAllowLinkedLibraries: true,
         }
       );
 
       await expect(
-        ps.initialize("Another Name", "SYMB", lp.address, maticOracle.address, ADDRESSES.SwapRouter, _A("0.0005"))
+        ps.initialize("Another Name", "SYMB", lp.address, maticOracle.address, [1, _W("0.02"), swapDefaultParams])
       ).to.be.revertedWith("Initializable: contract is already initialized");
     });
   });
@@ -278,7 +279,7 @@ describe("Test AAVE payout automation contracts", function () {
   }
 
   async function deployPoolFixture() {
-    fork(47719249);
+    await fork(47719249);
 
     const [owner, lp, cust, cust2, gelato, ...signers] = await ethers.getSigners();
 
@@ -339,8 +340,24 @@ describe("Test AAVE payout automation contracts", function () {
     const newCdf = Array(await rm.PRICE_SLOTS()).fill([_W("0.01"), _W("0.05"), _W("1.0")]);
     await rm.setCDF(24, newCdf);
 
-    const AAVERepayPayoutAutomation = await ethers.getContractFactory("AAVERepayPayoutAutomation");
-    const AAVEBuyEthPayoutAutomation = await ethers.getContractFactory("AAVEBuyEthPayoutAutomation");
+    const SwapLibrary = await ethers.getContractFactory("SwapLibrary");
+    const swap = await SwapLibrary.deploy();
+
+    const swapDefaultParams = ethers.utils.defaultAbiCoder.encode(
+      ["uint24", "address"],
+      [_A("0.0005"), ADDRESSES.SwapRouter]
+    );
+
+    const AAVERepayPayoutAutomation = await ethers.getContractFactory("AAVERepayPayoutAutomation", {
+      libraries: {
+        SwapLibrary: swap.address,
+      },
+    });
+    const AAVEBuyEthPayoutAutomation = await ethers.getContractFactory("AAVEBuyEthPayoutAutomation", {
+      libraries: {
+        SwapLibrary: swap.address,
+      },
+    });
 
     return {
       pool,
@@ -363,6 +380,9 @@ describe("Test AAVE payout automation contracts", function () {
       cust2,
       gelato,
       signers,
+      SwapLibrary,
+      swap,
+      swapDefaultParams,
     };
   }
 
@@ -372,10 +392,11 @@ describe("Test AAVE payout automation contracts", function () {
 
     const ps = await hre.upgrades.deployProxy(
       ret.AAVERepayPayoutAutomation,
-      ["The Name", "SYMB", ret.lp.address, ret.maticOracle.address, ADDRESSES.SwapRouter, _A("0.0005")],
+      ["The Name", "SYMB", ret.lp.address, ret.maticOracle.address, [1, _W("0.02"), ret.swapDefaultParams]],
       {
         kind: "uups",
         constructorArgs: [ret.pool.address, automate.address, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
+        unsafeAllowLinkedLibraries: true,
       }
     );
 
@@ -400,10 +421,11 @@ describe("Test AAVE payout automation contracts", function () {
 
     const ps = await hre.upgrades.deployProxy(
       ret.AAVEBuyEthPayoutAutomation,
-      ["The Name", "SYMB", ret.lp.address, ret.maticOracle.address, ADDRESSES.SwapRouter, _A("0.0005")],
+      ["The Name", "SYMB", ret.lp.address, ret.maticOracle.address, [1, _W("0.02"), ret.swapDefaultParams]],
       {
         kind: "uups",
         constructorArgs: [ret.pool.address, automate.address, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
+        unsafeAllowLinkedLibraries: true,
       }
     );
     const aWMATIC = await ethers.getContractAt("IERC20Metadata", ADDRESSES.aWMATIC);
