@@ -159,9 +159,9 @@ describe("Test Gelato Task Creation / Execution", function () {
 
     // some random address as router
     let randomAddr = ethers.utils.defaultAbiCoder.encode(["uint24", "address"], [_A("0.0005"), signers[1].address]);
-    await expect(fpa.connect(guardian).setSwapConfig([0, _W("0.05"), randomAddr]))
+    await expect(fpa.connect(guardian).setSwapConfig([1, _W("0.07"), randomAddr]))
       .to.emit(fpa, "SwapConfigSet")
-      .withArgs([0, _W("0.05"), randomAddr]);
+      .withArgs([1, _W("0.07"), randomAddr]);
 
     await expect(fpa.connect(guardian).setOracle(signers[1].address))
       .to.emit(fpa, "OracleSet")
@@ -187,15 +187,19 @@ describe("Test Gelato Task Creation / Execution", function () {
 
     await expect(fpa.connect(guardian).setSwapConfig([3, _W("0.04"), swapDefaultParams])).to.be.reverted;
 
+    await expect(fpa.connect(guardian).setSwapConfig([0, _W("0.04"), swapDefaultParams])).to.be.revertedWith(
+      "SwapLibrary: Invalid Protocol"
+    );
+
     // some random address as router
     let randomAddr = ethers.utils.defaultAbiCoder.encode(["uint24", "address"], [_A("0.0005"), signers[1].address]);
-    await expect(fpa.connect(guardian).setSwapConfig([0, _W("0.05"), randomAddr]))
+    await expect(fpa.connect(guardian).setSwapConfig([1, _W("0.06"), randomAddr]))
       .to.emit(fpa, "SwapConfigSet")
-      .withArgs([0, _W("0.05"), randomAddr]);
+      .withArgs([1, _W("0.06"), randomAddr]);
 
     swapConfig = await fpa.swapConfig();
-    expect(swapConfig.protocol).to.equal(0);
-    expect(swapConfig.maxSlippage).to.equal(_W("0.05"));
+    expect(swapConfig.protocol).to.equal(1);
+    expect(swapConfig.maxSlippage).to.equal(_W("0.06"));
     expect(swapConfig.customParams).to.equal(randomAddr);
   });
 

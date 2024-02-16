@@ -38,7 +38,7 @@ library SwapLibrary {
       );
       require(address(router_) != address(0), "SwapLibrary: SwapRouter address cannot be zero");
       require(feeTier_ > 0, "SwapLibrary: feeTier cannot be zero");
-    }
+    } else require(swapConfig.protocol != SwapProtocol.undefined, "SwapLibrary: Invalid Protocol");
   }
 
   function exactInput(
