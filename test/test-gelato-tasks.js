@@ -153,21 +153,17 @@ describe("Test Gelato Task Creation / Execution", function () {
       accessControlMessage(lp.address, null, "GUARDIAN_ROLE")
     );
 
-    // some random address as router
-    let randomZeroAddr = ethers.utils.defaultAbiCoder.encode(["uint24", "address"], [_A("0.0005"), signers[1].address]);
-    await expect(fpa.connect(guardian).setSwapConfig([0, _W("0.05"), randomZeroAddr]))
-      .to.emit(fpa, "SwapConfigSet")
-      .withArgs([0, _W("0.05"), randomZeroAddr]);
-  });
-
-  it("Only GUARDIAN can set oracle", async () => {
-    const { fpa, lp, guardian, signers } = await helpers.loadFixture(forwardPayoutAutomationFixture);
-
     await expect(fpa.connect(lp).setOracle(AddressZero)).to.be.revertedWith(
       accessControlMessage(lp.address, null, "GUARDIAN_ROLE")
     );
 
-    await expect(fpa.connect(guardian).setOracle(signers[1].address) /* some random address */)
+    // some random address as router
+    let randomAddr = ethers.utils.defaultAbiCoder.encode(["uint24", "address"], [_A("0.0005"), signers[1].address]);
+    await expect(fpa.connect(guardian).setSwapConfig([0, _W("0.05"), randomAddr]))
+      .to.emit(fpa, "SwapConfigSet")
+      .withArgs([0, _W("0.05"), randomAddr]);
+
+    await expect(fpa.connect(guardian).setOracle(signers[1].address))
       .to.emit(fpa, "OracleSet")
       .withArgs(signers[1].address);
     expect(await fpa.oracle()).to.equal(signers[1].address);
@@ -192,15 +188,15 @@ describe("Test Gelato Task Creation / Execution", function () {
     await expect(fpa.connect(guardian).setSwapConfig([3, _W("0.04"), swapDefaultParams])).to.be.reverted;
 
     // some random address as router
-    let randomZeroAddr = ethers.utils.defaultAbiCoder.encode(["uint24", "address"], [_A("0.0005"), signers[1].address]);
-    await expect(fpa.connect(guardian).setSwapConfig([0, _W("0.05"), randomZeroAddr]))
+    let randomAddr = ethers.utils.defaultAbiCoder.encode(["uint24", "address"], [_A("0.0005"), signers[1].address]);
+    await expect(fpa.connect(guardian).setSwapConfig([0, _W("0.05"), randomAddr]))
       .to.emit(fpa, "SwapConfigSet")
-      .withArgs([0, _W("0.05"), randomZeroAddr]);
+      .withArgs([0, _W("0.05"), randomAddr]);
 
     swapConfig = await fpa.swapConfig();
     expect(swapConfig.protocol).to.equal(0);
     expect(swapConfig.maxSlippage).to.equal(_W("0.05"));
-    expect(swapConfig.customParams).to.equal(randomZeroAddr);
+    expect(swapConfig.customParams).to.equal(randomAddr);
   });
 
   it("Creates a policy resolution task when a policy is created", async () => {
