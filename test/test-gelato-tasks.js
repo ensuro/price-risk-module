@@ -77,6 +77,18 @@ describe("Test Gelato Task Creation / Execution", function () {
     ).to.be.revertedWith("Initializable: contract is already initialized");
   });
 
+  it("Should check event methods are only callable by the pool", async () => {
+    const { fpa, pool, lp } = await helpers.loadFixture(forwardPayoutAutomationFixture);
+
+    await expect(fpa.connect(lp).onPayoutReceived(pool.address, lp.address, 1, 0)).to.be.revertedWith(
+      "PayoutAutomationBase: The caller must be the PolicyPool"
+    );
+
+    await expect(fpa.connect(lp).onPolicyExpired(pool.address, lp.address, 12)).to.be.revertedWith(
+      "PayoutAutomationBase: The caller must be the PolicyPool"
+    );
+  });
+
   it("Requires all parameters on initialization", async () => {
     const { pool, ForwardPayoutAutomation, automate, oracle, admin } = await helpers.loadFixture(
       forwardPayoutAutomationFixture
@@ -128,6 +140,33 @@ describe("Test Gelato Task Creation / Execution", function () {
     await expect(fpa.connect(guardian).setOracle(AddressZero)).to.be.revertedWith(
       "PayoutAutomationBaseGelato: oracle address cannot be zero"
     );
+    await expect(fpa.connect(guardian).setOracle(signers[1].address) /* some random address */)
+      .to.emit(fpa, "OracleSet")
+      .withArgs(signers[1].address);
+    expect(await fpa.oracle()).to.equal(signers[1].address);
+  });
+
+  it("Only GUARDIAN can set swap config", async () => {
+    const { fpa, swapDefaultParams, lp, guardian, signers } = await helpers.loadFixture(forwardPayoutAutomationFixture);
+
+    await expect(fpa.connect(lp).setSwapConfig([1, _W("0.1"), swapDefaultParams])).to.be.revertedWith(
+      accessControlMessage(lp.address, null, "GUARDIAN_ROLE")
+    );
+
+    // some random address as router
+    let randomZeroAddr = ethers.utils.defaultAbiCoder.encode(["uint24", "address"], [_A("0.0005"), signers[1].address]);
+    await expect(fpa.connect(guardian).setSwapConfig([0, _W("0.05"), randomZeroAddr]))
+      .to.emit(fpa, "SwapConfigSet")
+      .withArgs([0, _W("0.05"), randomZeroAddr]);
+  });
+
+  it("Only GUARDIAN can set oracle", async () => {
+    const { fpa, lp, guardian, signers } = await helpers.loadFixture(forwardPayoutAutomationFixture);
+
+    await expect(fpa.connect(lp).setOracle(AddressZero)).to.be.revertedWith(
+      accessControlMessage(lp.address, null, "GUARDIAN_ROLE")
+    );
+
     await expect(fpa.connect(guardian).setOracle(signers[1].address) /* some random address */)
       .to.emit(fpa, "OracleSet")
       .withArgs(signers[1].address);
