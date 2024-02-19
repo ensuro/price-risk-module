@@ -374,6 +374,9 @@ describe("Test Gelato Task Creation / Execution", function () {
     await helpers.time.increase(HOUR);
     await oracle.setPrice(_W("0.559"));
     await rm.triggerPolicy(makePolicyId(rm.address, 1));
+
+    // After trigger the policy, the allowance should be 0 again
+    expect(await currency.allowance(fpa.address, ADDRESSES.SwapRouter)).to.equal(0);
   });
 });
 
@@ -399,6 +402,9 @@ describe("SwapRouterMock", () => {
     await helpers.time.increase(HOUR);
     await oracle.setPrice(_W("0.559"));
     const tx = await rm.triggerPolicy(makePolicyId(rm.address, 1));
+
+    // After trigger the policy, the allowance should be 0 again
+    expect(await currency.allowance(fpa.address, ADDRESSES.SwapRouter)).to.equal(0);
 
     // The exchange was made using the swap router funds
     await expect(tx).to.changeEtherBalance(gelato, _W("0.013371337")); // sanity check that the fee was paid

@@ -35,12 +35,9 @@ library SwapLibrary {
   function validate(SwapConfig calldata swapConfig) external pure {
     require(swapConfig.maxSlippage > 0, "SwapLibrary: maxSlippage cannot be zero");
     if (swapConfig.protocol == SwapProtocol.uniswap) {
-      (uint24 feeTier_, ISwapRouter router_) = abi.decode(
-        swapConfig.customParams,
-        (uint24, ISwapRouter)
-      );
-      require(address(router_) != address(0), "SwapLibrary: SwapRouter address cannot be zero");
-      require(feeTier_ > 0, "SwapLibrary: feeTier cannot be zero");
+      UniswapCustomParams memory cp = abi.decode(swapConfig.customParams, (UniswapCustomParams));
+      require(address(cp.router) != address(0), "SwapLibrary: SwapRouter address cannot be zero");
+      require(cp.feeTier > 0, "SwapLibrary: feeTier cannot be zero");
     } else revert("SwapLibrary: invalid protocol");
   }
 
@@ -85,6 +82,7 @@ library SwapLibrary {
     uint256 currencyMin = (amount * _toWadFactor(tokenIn)).wadDiv(price).wadMul(
       WadRayMath.WAD - swapConfig.maxSlippage
     ) / _toWadFactor(tokenOut);
+
     IERC20Metadata(tokenIn).approve(address(cp.router), amount);
     ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
       tokenIn: tokenIn,
@@ -99,6 +97,10 @@ library SwapLibrary {
 
     uint256 received = cp.router.exactInputSingle(params);
 
+    require(
+      IERC20Metadata(tokenIn).allowance(address(this), address(cp.router)) == 0,
+      "SwapLibrary: something wrong, allowance should go back to 0"
+    );
     // Sanity check
     require(received >= currencyMin, "SwapLibrary: the payout is not enough to cover the tx fees");
     return received;
@@ -129,6 +131,8 @@ library SwapLibrary {
       sqrtPriceLimitX96: 0 // Since we're limiting the transfer amount, we don't need to worry about the price impact of the transaction
     });
     uint256 actualAmount = cp.router.exactOutputSingle(params);
+
+    IERC20Metadata(tokenIn).approve(address(cp.router), 0);
 
     // Sanity check
     require(actualAmount <= amountInMax, "SwapLibrary: exchange rate higher than tolerable");
