@@ -45,6 +45,14 @@ library SwapLibrary {
     return (10 ** (18 - IERC20Metadata(token).decimals()));
   }
 
+  /**
+   * @dev Executes a swap of `amount` from the input token (`tokenIn`) to the output token (`tokenOut`),
+   * @param swapConfig Swap configuration including the swap protocol to use.
+   * @param tokenIn The address of the token to be swapped.
+   * @param tokenOut The address of the token to be received as a result of the swap.
+   * @param amount The exact amount of input token to be swapped.
+   * @param price The price at which the swap will occur.
+   */
   function exactInput(
     SwapConfig calldata swapConfig,
     address tokenIn,
@@ -58,6 +66,14 @@ library SwapLibrary {
     return 0;
   }
 
+  /**
+   * @dev Executes a swap, where the desired output amount of `tokenOut` is specified,
+   * @param swapConfig Swap configuration including the protocol to use for the swap.
+   * @param tokenIn The address of the token to be used as input for the swap.
+   * @param tokenOut The address of the token to be received as a result of the swap.
+   * @param amount The desired amount of output tokens (`tokenOut`) to be obtained from the swap.
+   * @param price The price at which the swap will occur.
+   */
   function exactOutput(
     SwapConfig calldata swapConfig,
     address tokenIn,
