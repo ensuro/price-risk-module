@@ -13,8 +13,6 @@ import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IER
 library SwapLibrary {
   using WadRayMath for uint256;
 
-  uint256 internal constant WAD = 1e18;
-
   /**
    * @dev Enum with the different protocols
    */
@@ -29,6 +27,11 @@ library SwapLibrary {
     bytes customParams;
   }
 
+  struct UniswapCustomParams {
+    uint24 feeTier;
+    ISwapRouter router;
+  }
+
   function validate(SwapConfig calldata swapConfig) external pure {
     require(swapConfig.maxSlippage > 0, "SwapLibrary: maxSlippage cannot be zero");
     if (swapConfig.protocol == SwapProtocol.uniswap) {
@@ -38,11 +41,15 @@ library SwapLibrary {
       );
       require(address(router_) != address(0), "SwapLibrary: SwapRouter address cannot be zero");
       require(feeTier_ > 0, "SwapLibrary: feeTier cannot be zero");
-    } else require(swapConfig.protocol != SwapProtocol.undefined, "SwapLibrary: Invalid Protocol");
+    } else revert("SwapLibrary: invalid protocol");
+  }
+
+  function _toWadFactor(address token) internal view returns (uint256) {
+    return (10 ** (18 - IERC20Metadata(token).decimals()));
   }
 
   function exactInput(
-    SwapConfig storage swapConfig,
+    SwapConfig calldata swapConfig,
     address tokenIn,
     address tokenOut,
     uint256 amount,
@@ -55,7 +62,7 @@ library SwapLibrary {
   }
 
   function exactOutput(
-    SwapConfig storage swapConfig,
+    SwapConfig calldata swapConfig,
     address tokenIn,
     address tokenOut,
     uint256 amount,
@@ -68,26 +75,21 @@ library SwapLibrary {
   }
 
   function _exactInputUniswap(
-    SwapConfig storage swapConfig,
+    SwapConfig calldata swapConfig,
     address tokenIn,
     address tokenOut,
     uint256 amount,
     uint256 price
   ) internal returns (uint256) {
-    (uint24 feeTier_, ISwapRouter router_) = abi.decode(
-      swapConfig.customParams,
-      (uint24, ISwapRouter)
-    );
-
-    uint256 _wadToCurrencyFactor = (10 ** (18 - IERC20Metadata(tokenIn).decimals()));
-    uint256 currencyMin = (amount * _wadToCurrencyFactor).wadDiv(price).wadMul(
-      WAD - swapConfig.maxSlippage
-    );
-    IERC20Metadata(tokenIn).approve(address(router_), amount);
+    UniswapCustomParams memory cp = abi.decode(swapConfig.customParams, (UniswapCustomParams));
+    uint256 currencyMin = (amount * _toWadFactor(tokenIn)).wadDiv(price).wadMul(
+      WadRayMath.WAD - swapConfig.maxSlippage
+    ) / _toWadFactor(tokenOut);
+    IERC20Metadata(tokenIn).approve(address(cp.router), amount);
     ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
       tokenIn: tokenIn,
       tokenOut: tokenOut,
-      fee: feeTier_,
+      fee: cp.feeTier,
       recipient: address(this),
       deadline: block.timestamp,
       amountIn: amount,
@@ -95,7 +97,7 @@ library SwapLibrary {
       sqrtPriceLimitX96: 0 // Since we're limiting the transfer amount, we don't need to worry about the price impact of the transaction
     });
 
-    uint256 received = router_.exactInputSingle(params);
+    uint256 received = cp.router.exactInputSingle(params);
 
     // Sanity check
     require(received >= currencyMin, "SwapLibrary: the payout is not enough to cover the tx fees");
@@ -103,37 +105,33 @@ library SwapLibrary {
   }
 
   function _exactOutputUniswap(
-    SwapConfig storage swapConfig,
+    SwapConfig calldata swapConfig,
     address tokenIn,
     address tokenOut,
     uint256 amount,
     uint256 price
   ) internal returns (uint256) {
-    (uint24 feeTier_, ISwapRouter router_) = abi.decode(
-      swapConfig.customParams,
-      (uint24, ISwapRouter)
-    );
+    UniswapCustomParams memory cp = abi.decode(swapConfig.customParams, (UniswapCustomParams));
 
-    uint256 _wadToCurrencyFactor = (10 ** (18 - IERC20Metadata(tokenIn).decimals()));
-    uint256 feeInCurrency = (amount.wadMul(price) / _wadToCurrencyFactor).wadMul(
-      WAD + swapConfig.maxSlippage
-    );
-    IERC20Metadata(tokenIn).approve(address(router_), amount);
+    uint256 amountInMax = (amount * _toWadFactor(tokenOut)).wadMul(price).wadMul(
+      WadRayMath.WAD + swapConfig.maxSlippage
+    ) / _toWadFactor(tokenIn);
+    IERC20Metadata(tokenIn).approve(address(cp.router), type(uint256).max);
 
     ISwapRouter.ExactOutputSingleParams memory params = ISwapRouter.ExactOutputSingleParams({
       tokenIn: tokenIn,
       tokenOut: tokenOut,
-      fee: feeTier_,
+      fee: cp.feeTier,
       recipient: address(this),
       deadline: block.timestamp,
       amountOut: amount,
-      amountInMaximum: feeInCurrency,
+      amountInMaximum: amountInMax,
       sqrtPriceLimitX96: 0 // Since we're limiting the transfer amount, we don't need to worry about the price impact of the transaction
     });
-    uint256 actualFee = router_.exactOutputSingle(params);
+    uint256 actualAmount = cp.router.exactOutputSingle(params);
 
     // Sanity check
-    require(actualFee <= feeInCurrency, "SwapLibrary: exchange rate higher than tolerable");
-    return actualFee;
+    require(actualAmount <= amountInMax, "SwapLibrary: exchange rate higher than tolerable");
+    return actualAmount;
   }
 }

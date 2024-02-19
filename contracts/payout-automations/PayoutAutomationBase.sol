@@ -37,6 +37,9 @@ abstract contract PayoutAutomationBase is
   using SafeERC20 for IERC20Metadata;
 
   bytes32 public constant GUARDIAN_ROLE = keccak256("GUARDIAN_ROLE");
+  bytes32 public constant SET_SWAP_CONFIG_ROLE = keccak256("SET_SWAP_CONFIG_ROLE");
+  bytes32 public constant SET_ORACLE_ROLE = keccak256("SET_ORACLE_ROLE");
+
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IPolicyPool internal immutable _policyPool;
 

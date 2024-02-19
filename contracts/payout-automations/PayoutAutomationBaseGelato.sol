@@ -201,7 +201,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     return _oracle;
   }
 
-  function setOracle(IPriceOracle oracle_) external onlyRole(GUARDIAN_ROLE) {
+  function setOracle(IPriceOracle oracle_) external onlyRole(SET_ORACLE_ROLE) {
     require(
       address(oracle_) != address(0),
       "PayoutAutomationBaseGelato: oracle address cannot be zero"
@@ -213,7 +213,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
 
   function setSwapConfig(
     SwapLibrary.SwapConfig calldata swapConfig_
-  ) external onlyRole(GUARDIAN_ROLE) {
+  ) external onlyRole(SET_SWAP_CONFIG_ROLE) {
     swapConfig_.validate();
     _swapConfig = swapConfig_;
     emit SwapConfigSet(swapConfig_);
