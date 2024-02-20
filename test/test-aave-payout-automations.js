@@ -18,6 +18,12 @@ const HOUR = 3600;
 
 hre.upgrades.silenceWarnings();
 
+// enum
+const Protocols = {
+  undefined: 0,
+  uniswap: 1,
+};
+
 describe("Test AAVE payout automation contracts", function () {
   let _A;
 
@@ -63,7 +69,7 @@ describe("Test AAVE payout automation contracts", function () {
       const contractClass = others[contractName];
       const ps = await hre.upgrades.deployProxy(
         contractClass,
-        ["The Name", "SYMB", lp.address, maticOracle.address, [1, _W("0.02"), swapDefaultParams]],
+        ["The Name", "SYMB", lp.address, maticOracle.address, [Protocols.uniswap, _W("0.02"), swapDefaultParams]],
         {
           kind: "uups",
           constructorArgs: [pool.address, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
@@ -72,7 +78,11 @@ describe("Test AAVE payout automation contracts", function () {
       );
 
       await expect(
-        ps.initialize("Another Name", "SYMB", lp.address, maticOracle.address, [1, _W("0.02"), swapDefaultParams])
+        ps.initialize("Another Name", "SYMB", lp.address, maticOracle.address, [
+          Protocols.uniswap,
+          _W("0.02"),
+          swapDefaultParams,
+        ])
       ).to.be.revertedWith("Initializable: contract is already initialized");
     });
   });
@@ -392,7 +402,13 @@ describe("Test AAVE payout automation contracts", function () {
 
     const ps = await hre.upgrades.deployProxy(
       ret.AAVERepayPayoutAutomation,
-      ["The Name", "SYMB", ret.lp.address, ret.maticOracle.address, [1, _W("0.02"), ret.swapDefaultParams]],
+      [
+        "The Name",
+        "SYMB",
+        ret.lp.address,
+        ret.maticOracle.address,
+        [Protocols.uniswap, _W("0.02"), ret.swapDefaultParams],
+      ],
       {
         kind: "uups",
         constructorArgs: [ret.pool.address, automate.address, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
@@ -421,7 +437,13 @@ describe("Test AAVE payout automation contracts", function () {
 
     const ps = await hre.upgrades.deployProxy(
       ret.AAVEBuyEthPayoutAutomation,
-      ["The Name", "SYMB", ret.lp.address, ret.maticOracle.address, [1, _W("0.02"), ret.swapDefaultParams]],
+      [
+        "The Name",
+        "SYMB",
+        ret.lp.address,
+        ret.maticOracle.address,
+        [Protocols.uniswap, _W("0.02"), ret.swapDefaultParams],
+      ],
       {
         kind: "uups",
         constructorArgs: [ret.pool.address, automate.address, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
