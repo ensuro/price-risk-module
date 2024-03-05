@@ -34,9 +34,9 @@ describe("Test PriceRiskModule contract", function () {
   it("Should construct the ChainlinkPriceOracle", async () => {
     const reference = await deployAggMock(8);
     const asset = await deployAggMock(8);
-    const oracle = await ChainlinkPriceOracle.deploy(asset.target, reference.target, 3600);
-    expect(await oracle.assetOracle()).to.be.equal(asset.target);
-    expect(await oracle.referenceOracle()).to.be.equal(reference.target);
+    const oracle = await ChainlinkPriceOracle.deploy(asset, reference, 3600);
+    expect(await oracle.assetOracle()).to.be.equal(asset);
+    expect(await oracle.referenceOracle()).to.be.equal(reference);
     expect(await oracle.oracleTolerance()).to.be.equal(3600);
   });
 
@@ -46,8 +46,8 @@ describe("Test PriceRiskModule contract", function () {
       "PriceRiskModule: assetOracle_ cannot be the zero address"
     );
 
-    const oracle = await ChainlinkPriceOracle.deploy(asset.target, ZeroAddress, 3600);
-    expect(await oracle.assetOracle()).to.be.equal(asset.target);
+    const oracle = await ChainlinkPriceOracle.deploy(asset, ZeroAddress, 3600);
+    expect(await oracle.assetOracle()).to.be.equal(asset);
     expect(await oracle.referenceOracle()).to.be.equal(ZeroAddress);
     expect(await oracle.oracleTolerance()).to.be.equal(3600);
   });
@@ -56,7 +56,7 @@ describe("Test PriceRiskModule contract", function () {
     const now = await helpers.time.latest();
     const reference = await deployAggMock(8);
     const asset = await deployAggMock(8);
-    const oracle = await ChainlinkPriceOracle.deploy(asset.target, reference.target, 3600);
+    const oracle = await ChainlinkPriceOracle.deploy(asset, reference, 3600);
 
     await expect(oracle.getCurrentPrice()).to.be.revertedWith("Price is older than tolerable");
 
@@ -79,7 +79,7 @@ describe("Test PriceRiskModule contract", function () {
 
   it("If not reference, returns just the asset price", async () => {
     const asset = await deployAggMock(8);
-    const oracle = await ChainlinkPriceOracle.deploy(asset.target, ZeroAddress, 3600);
+    const oracle = await ChainlinkPriceOracle.deploy(asset, ZeroAddress, 3600);
 
     await addRound(asset, _A8("34.2"));
     expect(await oracle.getCurrentPrice()).to.be.equal(_W("34.2"));
@@ -89,7 +89,7 @@ describe("Test PriceRiskModule contract", function () {
     // Asset = 6 decimals / Reference = 8 decimals
     let asset = await deployAggMock(6);
     let reference = await deployAggMock(8);
-    let oracle = await ChainlinkPriceOracle.deploy(asset.target, reference.target, 3600);
+    let oracle = await ChainlinkPriceOracle.deploy(asset, reference, 3600);
 
     await addRound(asset, _A("10"));
     await addRound(reference, _A8("2"));
@@ -100,7 +100,7 @@ describe("Test PriceRiskModule contract", function () {
     // Asset = 8 decimals / Reference = 6 decimals
     asset = await deployAggMock(8);
     reference = await deployAggMock(6);
-    oracle = await ChainlinkPriceOracle.deploy(asset.target, reference.target, 3600);
+    oracle = await ChainlinkPriceOracle.deploy(asset, reference, 3600);
     await addRound(asset, _A8("10"));
     await addRound(reference, _A("2"));
     expect(await oracle.getCurrentPrice()).to.be.equal(_W("5"));
@@ -108,7 +108,7 @@ describe("Test PriceRiskModule contract", function () {
     // Asset = 18 decimals / Reference = 20 decimals
     asset = await deployAggMock(18);
     reference = await deployAggMock(20);
-    oracle = await ChainlinkPriceOracle.deploy(asset.target, reference.target, 3600);
+    oracle = await ChainlinkPriceOracle.deploy(asset, reference, 3600);
     await addRound(asset, _W("8"));
     await addRound(reference, _A20("2"));
     expect(await oracle.getCurrentPrice()).to.be.equal(_W("4"));
@@ -116,7 +116,7 @@ describe("Test PriceRiskModule contract", function () {
     // Asset = 20 decimals / Reference = null
     asset = await deployAggMock(20);
     reference = await deployAggMock(20);
-    oracle = await ChainlinkPriceOracle.deploy(asset.target, ZeroAddress, 3600);
+    oracle = await ChainlinkPriceOracle.deploy(asset, ZeroAddress, 3600);
     await addRound(asset, _A20("8"));
     expect(await oracle.getCurrentPrice()).to.be.equal(_W("8"));
   });
@@ -150,10 +150,10 @@ describe("Test PriceRiskModule contract", function () {
     expect(referencePrice).to.equal(_U("1.00002339"));
 
     // Contract setup
-    const oracle = await ChainlinkPriceOracle.deploy(assetOracle.target, referenceOracle.target, HOUR);
+    const oracle = await ChainlinkPriceOracle.deploy(assetOracle, referenceOracle, HOUR);
     expect(await oracle.getCurrentPrice()).to.closeTo(_E("293.17314268"), _E("0.00000001"));
 
-    const inverseOracle = await ChainlinkPriceOracle.deploy(referenceOracle.target, assetOracle.target, HOUR);
+    const inverseOracle = await ChainlinkPriceOracle.deploy(referenceOracle, assetOracle, HOUR);
 
     expect(await inverseOracle.getCurrentPrice()).to.closeTo(_E("0.00341095"), _E("0.00000001"));
   });

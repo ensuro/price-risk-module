@@ -28,16 +28,12 @@ contract AggregatorV3Mock is AggregatorV3Interface {
     owner = msg.sender;
   }
 
-  function getRoundData(uint80 _roundId)
+  function getRoundData(
+    uint80 _roundId
+  )
     external
     view
-    returns (
-      uint80 roundId,
-      int256 answer,
-      uint256 startedAt,
-      uint256 updatedAt,
-      uint80 answeredInRound
-    )
+    returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
   {
     RoundData memory round = _rounds[_roundId];
 
@@ -47,23 +43,12 @@ contract AggregatorV3Mock is AggregatorV3Interface {
   function latestRoundData()
     external
     view
-    returns (
-      uint80 roundId,
-      int256 answer,
-      uint256 startedAt,
-      uint256 updatedAt,
-      uint80 answeredInRound
-    )
+    returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)
   {
     return this.getRoundData(_latestRound);
   }
 
-  function _addRound(
-    int256 answer,
-    uint256 startedAt,
-    uint256 updatedAt,
-    uint80 answeredInRound
-  ) public {
+  function _addRound(int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound) public {
     require(msg.sender == owner, "Method meant for testing only");
     _latestRound += 1;
     _rounds[_latestRound] = RoundData(_latestRound, answer, startedAt, updatedAt, answeredInRound);

@@ -23,10 +23,7 @@ contract AAVEBuyEthPayoutAutomation is PayoutAutomationBaseGelato {
     IWETH9 weth_,
     IPool aave_
   ) PayoutAutomationBaseGelato(policyPool_, automate_, weth_) {
-    require(
-      address(aave_) != address(0),
-      "AAVEBuyEthPayoutAutomation: you must specify AAVE's Pool address"
-    );
+    require(address(aave_) != address(0), "AAVEBuyEthPayoutAutomation: you must specify AAVE's Pool address");
     _aave = aave_;
   }
 
@@ -62,9 +59,7 @@ contract AAVEBuyEthPayoutAutomation is PayoutAutomationBaseGelato {
     (uint256 fee, address feeToken) = _getFeeDetails();
     require(feeToken == ETH, "Unsupported feeToken for gelato payment");
 
-    uint256 ethMin = (amount * _wadToCurrencyFactor).wadDiv(_oracle.getCurrentPrice()).wadMul(
-      WAD - _priceTolerance
-    );
+    uint256 ethMin = (amount * _wadToCurrencyFactor).wadDiv(_oracle.getCurrentPrice()).wadMul(WAD - _priceTolerance);
 
     ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
       tokenIn: address(_policyPool.currency()),

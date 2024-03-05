@@ -11,11 +11,7 @@ contract DummyPayoutAutomation is PayoutAutomationBase {
   // solhint-disable-next-line no-empty-blocks
   constructor(IPolicyPool policyPool_) PayoutAutomationBase(policyPool_) {}
 
-  function initialize(
-    string memory name_,
-    string memory symbol_,
-    address admin
-  ) public virtual initializer {
+  function initialize(string memory name_, string memory symbol_, address admin) public virtual initializer {
     __PayoutAutomationBase_init(name_, symbol_, admin);
   }
 

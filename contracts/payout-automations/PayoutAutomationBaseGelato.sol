@@ -70,14 +70,12 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     address automate_,
     IWETH9 weth_
   ) AutomateTaskCreator(automate_, address(this)) PayoutAutomationBase(policyPool_) {
-    require(
-      address(weth_) != address(0),
-      "PayoutAutomationBaseGelato: WETH address cannot be zero"
-    );
+    require(address(weth_) != address(0), "PayoutAutomationBaseGelato: WETH address cannot be zero");
     weth = weth_;
-    _wadToCurrencyFactor = (10**(18 - _policyPool.currency().decimals()));
+    _wadToCurrencyFactor = (10 ** (18 - _policyPool.currency().decimals()));
   }
 
+  // solhint-disable-next-line func-name-mixedcase
   function __PayoutAutomationBaseGelato_init(
     string memory name_,
     string memory symbol_,
@@ -90,22 +88,17 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     __PayoutAutomationBaseGelato_init_unchained(oracle_, swapRouter_, feeTier_);
   }
 
+  // solhint-disable-next-line func-name-mixedcase
   function __PayoutAutomationBaseGelato_init_unchained(
     IPriceOracle oracle_,
     ISwapRouter swapRouter_,
     uint24 feeTier_
   ) internal onlyInitializing {
-    require(
-      address(oracle_) != address(0),
-      "PayoutAutomationBaseGelato: oracle address cannot be zero"
-    );
+    require(address(oracle_) != address(0), "PayoutAutomationBaseGelato: oracle address cannot be zero");
     _oracle = oracle_;
     emit OracleSet(oracle_);
 
-    require(
-      address(swapRouter_) != address(0),
-      "PayoutAutomationBaseGelato: SwapRouter address cannot be zero"
-    );
+    require(address(swapRouter_) != address(0), "PayoutAutomationBaseGelato: SwapRouter address cannot be zero");
     _swapParams.swapRouter = swapRouter_;
     _policyPool.currency().safeApprove(address(_swapParams.swapRouter), type(uint256).max);
     emit SwapRouterSet(swapRouter_);
@@ -157,14 +150,9 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     (uint256 fee, address feeToken) = _getFeeDetails();
     require(feeToken == ETH, "Unsupported feeToken for gelato payment");
 
-    uint256 feeInUSDC = (fee.wadMul(_oracle.getCurrentPrice()) / _wadToCurrencyFactor).wadMul(
-      WAD + _priceTolerance
-    );
+    uint256 feeInUSDC = (fee.wadMul(_oracle.getCurrentPrice()) / _wadToCurrencyFactor).wadMul(WAD + _priceTolerance);
 
-    require(
-      feeInUSDC < amount,
-      "ForwardPayoutAutomationGelato: the payout is not enough to cover the tx fees"
-    );
+    require(feeInUSDC < amount, "ForwardPayoutAutomationGelato: the payout is not enough to cover the tx fees");
 
     ISwapRouter.ExactOutputSingleParams memory params = ISwapRouter.ExactOutputSingleParams({
       tokenIn: address(_policyPool.currency()),
@@ -180,10 +168,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     uint256 actualFeeInUSDC = _swapParams.swapRouter.exactOutputSingle(params);
 
     // Sanity check
-    require(
-      actualFeeInUSDC <= feeInUSDC,
-      "ForwardPayoutAutomationGelato: exchange rate higher than tolerable"
-    );
+    require(actualFeeInUSDC <= feeInUSDC, "ForwardPayoutAutomationGelato: exchange rate higher than tolerable");
 
     // Convert the WMATIC to MATIC for fee payment
     weth.withdraw(fee);
@@ -206,10 +191,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     policyId = super.newPolicy(riskModule, triggerPrice, lower, payout, expiration, onBehalfOf);
     ModuleData memory moduleData = ModuleData({modules: new Module[](1), args: new bytes[](1)});
     moduleData.modules[0] = Module.RESOLVER;
-    moduleData.args[0] = _resolverModuleArg(
-      address(this),
-      abi.encodeCall(this.checker, (riskModule, policyId))
-    );
+    moduleData.args[0] = _resolverModuleArg(address(this), abi.encodeCall(this.checker, (riskModule, policyId)));
 
     _taskIds[policyId] = _createTask(
       address(riskModule),
@@ -226,11 +208,10 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
    * @return execPayload ABI encoded call data to trigger the policy.
    *                     Notice that the contract that will be called was defined on task creation.
    */
-  function checker(IPriceRiskModule riskModule, uint256 policyId)
-    external
-    view
-    returns (bool canExec, bytes memory execPayload)
-  {
+  function checker(
+    IPriceRiskModule riskModule,
+    uint256 policyId
+  ) external view returns (bool canExec, bytes memory execPayload) {
     canExec = riskModule.policyCanBeTriggered(policyId);
     execPayload = abi.encodeCall(riskModule.triggerPolicy, (policyId));
   }
@@ -240,10 +221,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
   }
 
   function setOracle(IPriceOracle oracle_) external onlyRole(GUARDIAN_ROLE) {
-    require(
-      address(oracle_) != address(0),
-      "PayoutAutomationBaseGelato: oracle address cannot be zero"
-    );
+    require(address(oracle_) != address(0), "PayoutAutomationBaseGelato: oracle address cannot be zero");
     _oracle = oracle_;
 
     emit OracleSet(oracle_);
@@ -254,10 +232,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
   }
 
   function setSwapRouter(ISwapRouter swapRouter_) external onlyRole(GUARDIAN_ROLE) {
-    require(
-      address(swapRouter_) != address(0),
-      "PayoutAutomationBaseGelato: SwapRouter address cannot be zero"
-    );
+    require(address(swapRouter_) != address(0), "PayoutAutomationBaseGelato: SwapRouter address cannot be zero");
     address oldRouter = address(_swapParams.swapRouter);
     _swapParams.swapRouter = swapRouter_;
 
