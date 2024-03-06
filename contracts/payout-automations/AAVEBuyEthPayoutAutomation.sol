@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {SwapLibrary} from "./../SwapLibrary.sol";
+import {SwapLibrary} from "@ensuro/swaplibrary/contracts/SwapLibrary.sol";
 import {PayoutAutomationBaseGelato} from "./PayoutAutomationBaseGelato.sol";
 import {WadRayMath} from "@ensuro/core/contracts/dependencies/WadRayMath.sol";
 import {IPolicyPool} from "@ensuro/core/contracts/interfaces/IPolicyPool.sol";

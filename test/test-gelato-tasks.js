@@ -173,21 +173,7 @@ describe("Test Gelato Task Creation / Execution", function () {
       .withArgs([Protocols.uniswap, _W("0.07"), randomAddr]);
   });
 
-  it("Only SET_ORACLE_ROLE can set oracle", async () => {
-    const { fpa, oracleSetter, lp, signers } = await helpers.loadFixture(forwardPayoutAutomationFixture);
-
-    await expect(fpa.connect(lp).setOracle(AddressZero)).to.be.revertedWith(
-      accessControlMessage(lp.address, null, "SET_ORACLE_ROLE")
-    );
-
-    await expect(fpa.connect(oracleSetter).setOracle(signers[1].address))
-      .to.emit(fpa, "OracleSet")
-      .withArgs(signers[1].address);
-    expect(await fpa.oracle()).to.equal(signers[1].address);
-  });
-
-  /** TODO: REMOVE */
-  it("Only X_ROLE can set swap config and oracle", async () => {
+  it("Only SET_ORACLE_ROLE can set oracle and SET_SWAP_CONFIG_ROLE can set swap config", async () => {
     const { fpa, swapDefaultParams, swapConfigSetter, oracleSetter, lp, signers } = await helpers.loadFixture(
       forwardPayoutAutomationFixture
     );

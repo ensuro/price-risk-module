@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
-import {SwapLibrary} from "./../SwapLibrary.sol";
+import {SwapLibrary} from "@ensuro/swaplibrary/contracts/SwapLibrary.sol";
 import {PayoutAutomationBaseGelato} from "./PayoutAutomationBaseGelato.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
