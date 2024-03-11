@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const hre = require("hardhat");
 const { ethers } = hre;
-const { ZeroAddress, HashZero } = ethers;
+const { ZeroAddress, ZeroHash } = ethers;
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const {
   _W,
@@ -91,7 +91,7 @@ describe("Test PayoutAutomationBase contract", function () {
       constructorArgs: [poolAddr],
     });
 
-    await expect(fps.connect(cust).onERC721Received(pool, cust, 1, HashZero)).to.be.revertedWith(
+    await expect(fps.connect(cust).onERC721Received(pool, cust, 1, ZeroHash)).to.be.revertedWith(
       "PayoutAutomationBase: The caller must be the PolicyPool"
     );
 
@@ -304,6 +304,8 @@ describe("Test PayoutAutomationBase contract", function () {
 
     // To use newPolicyWithPermit you need a valid signature
     const rmAddr = await ethers.resolveAddress(rm);
+    const custAddr = await ethers.resolveAddress(cust);
+
     await expect(
       fps
         .connect(cust)
@@ -313,12 +315,12 @@ describe("Test PayoutAutomationBase contract", function () {
           true,
           _A(1000),
           start + HOUR * 24,
-          cust.address,
+          custAddr,
           0,
           start + HOUR,
           0,
-          HashZero,
-          HashZero
+          ZeroHash,
+          ZeroHash
         )
     ).to.be.revertedWith("ECDSA: invalid signature");
 
@@ -526,7 +528,7 @@ describe("Test PayoutAutomationBase contract", function () {
     };
 
     // sign the Permit type data with the deployer's private key
-    const signature = await owner._signTypedData(domain, types, values);
+    const signature = await owner.signTypedData(domain, types, values);
 
     // split the signature into its components
     const sig = ethers.Signature.from(signature);
