@@ -303,14 +303,12 @@ describe("Test PayoutAutomationBase contract", function () {
     });
 
     // To use newPolicyWithPermit you need a valid signature
-    const rmAddr = await ethers.resolveAddress(rm);
     const custAddr = await ethers.resolveAddress(cust);
-
     await expect(
       fps
         .connect(cust)
         .newPolicyWithPermit(
-          rmAddr,
+          rm,
           _W(1400),
           true,
           _A(1000),
@@ -324,7 +322,8 @@ describe("Test PayoutAutomationBase contract", function () {
         )
     ).to.be.revertedWith("ECDSA: invalid signature");
 
-    const expiredSig = await makeEIP2612Signature(hre, currency, cust, fps, _A(1), start);
+    const fpsAddr = await ethers.resolveAddress(fps);
+    const expiredSig = await makeEIP2612Signature(hre, currency, cust, fpsAddr, _A(1), start);
 
     await expect(
       fps
@@ -344,7 +343,7 @@ describe("Test PayoutAutomationBase contract", function () {
         )
     ).to.be.revertedWith("ERC20Permit: expired deadline");
 
-    const otherUserSig = await makeEIP2612Signature(hre, currency, lp, fps, _A(1), start + HOUR);
+    const otherUserSig = await makeEIP2612Signature(hre, currency, lp, fpsAddr, _A(1), start + HOUR);
 
     await expect(
       fps
@@ -364,7 +363,7 @@ describe("Test PayoutAutomationBase contract", function () {
         )
     ).to.be.revertedWith("ERC20Permit: invalid signature");
 
-    const notEnoughSig = await makeEIP2612Signature(hre, currency, cust, fps, _A(1), start + HOUR);
+    const notEnoughSig = await makeEIP2612Signature(hre, currency, cust, fpsAddr, _A(1), start + HOUR);
 
     await expect(
       fps
@@ -384,7 +383,7 @@ describe("Test PayoutAutomationBase contract", function () {
         )
     ).to.be.revertedWith("ERC20: insufficient allowance");
 
-    const okSig = await makeEIP2612Signature(hre, currency, cust, fps, _A(2000), start + HOUR);
+    const okSig = await makeEIP2612Signature(hre, currency, cust, fpsAddr, _A(2000), start + HOUR);
 
     // Create two policies, one with 1400 as price and the other with 1200
     const policyId = makePolicyId(rm, 1);
@@ -429,7 +428,7 @@ describe("Test PayoutAutomationBase contract", function () {
         )
     ).to.be.revertedWith("ERC20Permit: invalid signature");
 
-    const okSig2 = await makeEIP2612Signature(hre, currency, cust, fps, _A(200), start + HOUR);
+    const okSig2 = await makeEIP2612Signature(hre, currency, cust, fpsAddr, _A(200), start + HOUR);
 
     await expect(
       fps
@@ -462,7 +461,7 @@ describe("Test PayoutAutomationBase contract", function () {
 
     await helpers.time.increase(HOUR * 24);
     const policy2 = (await rm.getPolicyData(policyId2))[0];
-    await expect(pool.expirePolicy(policy2)).not.to.be.reverted;
+    await expect(pool.expirePolicy([...policy2])).not.to.be.reverted;
 
     // Pool NFT ownership doesn't changes when policies are triggered or expired
     expect(await pool.ownerOf(policyId)).to.be.equal(fps);
@@ -477,11 +476,12 @@ describe("Test PayoutAutomationBase contract", function () {
     // From: https://www.quicknode.com/guides/ethereum-development/transactions/how-to-use-erc20-permit-approval
     const chainId = hre.network.config.chainId;
     // set the domain parameters
+    const tokenAddr = await ethers.resolveAddress(token)
     const domain = {
       name: await token.name(),
       version: "1",
       chainId: chainId,
-      verifyingContract: token,
+      verifyingContract: tokenAddr,
     };
 
     // set the Permit type parameters
@@ -519,8 +519,9 @@ describe("Test PayoutAutomationBase contract", function () {
     const nonces = await token.nonces(owner);
 
     // set the Permit type values
+    const ownerAddr = await ethers.resolveAddress(owner)
     const values = {
-      owner: owner,
+      owner: ownerAddr,
       spender: spenderAddress,
       value: value,
       nonce: nonces,
