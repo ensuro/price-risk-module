@@ -24,7 +24,7 @@ describe("Test AAVE payout automation contracts", function () {
   const ADDRESSES = {
     USDC: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
     aaveV3: "0x794a61358D6845594F94dc1DB02A252b5b4814aD",
-    USDCWhale: "0x4d97dcd97ec945f40cf65f87097ace5ea0476045", // Random account with lot of USDC
+    USDCWhale: "0xe7804c37c13166fF0b37F5aE0BB07A3aEbb6e245", // Random account with lot of USDC
 
     // From USDC reserve data
     aUSDC: "0x625E7708f30cA75bfd92586e17077590C60eb4cD",
@@ -32,7 +32,6 @@ describe("Test AAVE payout automation contracts", function () {
     aUSDCDebtVariable: "0xFCCf3cAbbe80101232d343252614b6A3eE81C989",
 
     WMATIC: "0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270",
-    MATICWhale: "0x55FF76BFFC3Cdd9D5FdbBC2ece4528ECcE45047e", // Random account with lot of WMATIC
     aWMATIC: "0x6d80113e533a2C0fe82EaBD35f1875DcEA89Ea97",
 
     AUTOMATE: "0x527a819db1eb0e34426297b03bae11F2f8B3A19E",
@@ -279,7 +278,7 @@ describe("Test AAVE payout automation contracts", function () {
   async function deployPoolFixture() {
     await fork(47719249);
 
-    const [owner, lp, cust, cust2, gelato, ...signers] = await ethers.getSigners();
+    const [owner, lp, cust, cust2, gelato, wmaticWhale, ...signers] = await ethers.getSigners();
 
     const currency = await initForkCurrency(
       ADDRESSES.USDC,
@@ -291,13 +290,12 @@ describe("Test AAVE payout automation contracts", function () {
     const aave = await ethers.getContractAt("IPool", ADDRESSES.aaveV3);
 
     // Transfer some wmatic to the customers
-    const wmatic = await ethers.getContractAt("IERC20Metadata", ADDRESSES.WMATIC);
+    const wmatic = await ethers.getContractAt("IWETH9", ADDRESSES.WMATIC);
 
-    await helpers.impersonateAccount(ADDRESSES.MATICWhale);
-    await helpers.setBalance(ADDRESSES.MATICWhale, 100n ** 18n);
-    const MATICWhale = await hre.ethers.getSigner(ADDRESSES.MATICWhale);
-    await wmatic.connect(MATICWhale).transfer(cust, _E("10000"));
-    await wmatic.connect(MATICWhale).transfer(cust2, _E("10000"));
+    await helpers.setBalance(wmaticWhale.address, _E("1000000"));
+    await wmatic.connect(wmaticWhale).deposit({ value: _E("900000") });
+    await wmatic.connect(wmaticWhale).transfer(cust, _E("10000"));
+    await wmatic.connect(wmaticWhale).transfer(cust2, _E("10000"));
 
     await currency.connect(lp).transfer(cust, _A(500));
 
