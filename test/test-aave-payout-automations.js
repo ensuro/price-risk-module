@@ -11,8 +11,8 @@ const {
   addRiskModule,
   addEToken,
   initForkCurrency,
+  setupChain,
 } = require("@ensuro/core/js/test-utils");
-const { fork } = require("./utils");
 
 const HOUR = 3600;
 
@@ -276,7 +276,7 @@ describe("Test AAVE payout automation contracts", function () {
   }
 
   async function deployPoolFixture() {
-    await fork(47719249);
+    await setupChain(47719249);
 
     const [owner, lp, cust, cust2, gelato, wmaticWhale, ...signers] = await ethers.getSigners();
 

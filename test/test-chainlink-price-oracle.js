@@ -4,7 +4,7 @@ const { ethers } = hre;
 const { ZeroAddress } = ethers;
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { _E, _W, amountFunction } = require("@ensuro/core/js/utils");
-const { forkIt } = require("./utils");
+const { fork } = require("@ensuro/core/js/test-utils");
 
 const HOUR = 3600;
 
@@ -121,20 +121,8 @@ describe("Test PriceRiskModule contract", function () {
     expect(await oracle.getCurrentPrice()).to.be.equal(_W("8"));
   });
 
-  forkIt("Should work with real chainlink oracles (forking at https://polygonscan.com/block/54659737)", async () => {
-    if (process.env.ALCHEMY_URL === undefined) throw new Error("Define envvar ALCHEMY_URL for this test");
-    await hre.network.provider.request({
-      method: "hardhat_reset",
-      params: [
-        {
-          forking: {
-            jsonRpcUrl: process.env.ALCHEMY_URL,
-            blockNumber: 54659737, // polygon mainnet
-          },
-        },
-      ],
-    });
-
+  fork.it("Should work with real chainlink oracles", 54659737, async () => {
+    // Forking at https://polygonscan.com/block/54659737
     const _U = amountFunction(8);
 
     const BNB_ORACLE_ADDRESS = "0x82a6c4AF830caa6c97bb504425f6A66165C2c26e";
