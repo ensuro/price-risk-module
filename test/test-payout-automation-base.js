@@ -476,7 +476,7 @@ describe("Test PayoutAutomationBase contract", function () {
     // From: https://www.quicknode.com/guides/ethereum-development/transactions/how-to-use-erc20-permit-approval
     const chainId = hre.network.config.chainId;
     // set the domain parameters
-    const tokenAddr = await ethers.resolveAddress(token)
+    const tokenAddr = await ethers.resolveAddress(token);
     const domain = {
       name: await token.name(),
       version: "1",
@@ -519,7 +519,7 @@ describe("Test PayoutAutomationBase contract", function () {
     const nonces = await token.nonces(owner);
 
     // set the Permit type values
-    const ownerAddr = await ethers.resolveAddress(owner)
+    const ownerAddr = await ethers.resolveAddress(owner);
     const values = {
       owner: ownerAddr,
       spender: spenderAddress,

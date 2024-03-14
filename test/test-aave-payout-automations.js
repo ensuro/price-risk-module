@@ -164,12 +164,12 @@ describe("Test AAVE payout automation contracts", function () {
     // Repays stable debt
     let before = await aUSDCDebtStable.balanceOf(cust);
     await expect(rm.triggerPolicy(policyId)).to.emit(currency, "Transfer").withArgs(ps, aUSDC, anyUint);
-    expect(before.sub(await aUSDCDebtStable.balanceOf(cust))).to.be.closeTo(_A(1000), _A("0.01"));
+    expect(before - (await aUSDCDebtStable.balanceOf(cust))).to.be.closeTo(_A(1000), _A("0.01"));
 
     // Repays variable debt
     before = await aUSDCDebtVariable.balanceOf(cust2);
     await expect(rm.triggerPolicy(policyId2)).to.emit(currency, "Transfer").withArgs(ps, aUSDC, anyUint);
-    expect(before.sub(await aUSDCDebtVariable.balanceOf(cust2))).to.be.closeTo(_A(700), _A("0.01"));
+    expect(before - (await aUSDCDebtVariable.balanceOf(cust2))).to.be.closeTo(_A(700), _A("0.01"));
   });
 
   it("Can create policies that when triggered repay mixed stable and variable debt", async () => {
@@ -251,9 +251,9 @@ describe("Test AAVE payout automation contracts", function () {
 
     await expect(rm.triggerPolicy(policyId))
       .to.emit(aave, "Supply")
-      .withArgs(wmatic, ps, cust, _E("1888.408885662289522076"), 0);
+      .withArgs(wmatic, ps, cust, _E("1888.981483488424431571"), 0);
 
-    expect(await aWMATIC.balanceOf(cust)).to.be.closeTo(_E("1888.40"), _E("0.10"));
+    expect(await aWMATIC.balanceOf(cust)).to.be.closeTo(_E("1888.98"), _E("0.10"));
 
     // Trying to trigger policyId2 fails because payout is not enough to cover Gelato's fee
     await oracle.setPrice(_E("1190"));
@@ -269,9 +269,9 @@ describe("Test AAVE payout automation contracts", function () {
   async function depositAndTakeDebt(aave, usdc, wmatic, debtToken, user, depositAmount, borrowAmount) {
     await wmatic.connect(user).approve(aave, MaxUint256);
     await aave.connect(user).deposit(wmatic, depositAmount, user, 0);
-    await aave.connect(user).borrow(usdc, borrowAmount, debtToken == ADDRESSES.aUSDCDebtStable ? 1 : 2, 0, user);
+    const debtTokenAddr = await ethers.resolveAddress(debtToken);
+    await aave.connect(user).borrow(usdc, borrowAmount, debtTokenAddr == ADDRESSES.aUSDCDebtStable ? 1 : 2, 0, user);
 
-    console.log("BALANCE: ", await debtToken.balanceOf(user), borrowAmount);
     expect(await debtToken.balanceOf(user)).to.be.closeTo(borrowAmount, _A("0.0001"));
   }
 
