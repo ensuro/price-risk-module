@@ -121,7 +121,7 @@ describe("Test PriceRiskModule contract", function () {
     expect(await oracle.getCurrentPrice()).to.be.equal(_W("8"));
   });
 
-  forkIt("Should work with real chainlink oracles (forking at https://polygonscan.com/block/34906609)", async () => {
+  forkIt("Should work with real chainlink oracles (forking at https://polygonscan.com/block/54659737)", async () => {
     if (process.env.ALCHEMY_URL === undefined) throw new Error("Define envvar ALCHEMY_URL for this test");
     await hre.network.provider.request({
       method: "hardhat_reset",
@@ -129,7 +129,7 @@ describe("Test PriceRiskModule contract", function () {
         {
           forking: {
             jsonRpcUrl: process.env.ALCHEMY_URL,
-            blockNumber: 34906609, // polygon mainnet
+            blockNumber: 54659737, // polygon mainnet
           },
         },
       ],
@@ -145,16 +145,16 @@ describe("Test PriceRiskModule contract", function () {
 
     // Sanity check: are we in the right chain with the right block?
     const [, assetPrice] = await assetOracle.latestRoundData();
-    expect(assetPrice).to.equal(_U("293.18"));
+    expect(assetPrice).to.equal(_U("574.61773487"));
     const [, referencePrice] = await referenceOracle.latestRoundData();
-    expect(referencePrice).to.equal(_U("1.00002339"));
+    expect(referencePrice).to.equal(_U("0.99987698"));
 
     // Contract setup
     const oracle = await ChainlinkPriceOracle.deploy(assetOracle, referenceOracle, HOUR);
-    expect(await oracle.getCurrentPrice()).to.closeTo(_E("293.17314268"), _E("0.00000001"));
+    expect(await oracle.getCurrentPrice()).to.closeTo(_E("574.68843304"), _E("0.00000001"));
 
     const inverseOracle = await ChainlinkPriceOracle.deploy(referenceOracle, assetOracle, HOUR);
 
-    expect(await inverseOracle.getCurrentPrice()).to.closeTo(_E("0.00341095"), _E("0.00000001"));
+    expect(await inverseOracle.getCurrentPrice()).to.closeTo(_E("0.00174007"), _E("0.00000001"));
   });
 });
