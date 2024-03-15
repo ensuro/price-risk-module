@@ -333,7 +333,7 @@ describe("Test PriceRiskModule contract", function () {
     const receipt = await tx.wait();
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
     const policyId = newPolicyEvt.args.policy.id;
-    const MASK_96 = (BigInt(1) << BigInt(96)) - BigInt(1);
+    const MASK_96 = (1n << 96n) - 1n;
     expect(policyId & MASK_96).to.be.equal(1);
     expect(policyId).to.be.equal(makePolicyId(rm, 1));
     await expect(tx).to.emit(rm, "NewPricePolicy").withArgs(cust, policyId, lowTriggerPrice, true);
