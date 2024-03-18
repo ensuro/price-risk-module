@@ -17,18 +17,9 @@ contract MixedOracleMock is ChainlinkPriceOracle, PriceOracleMock, Ownable {
     AggregatorV3Interface assetOracle_,
     AggregatorV3Interface referenceOracle_,
     uint256 oracleTolerance_
-  )
-    ChainlinkPriceOracle(assetOracle_, referenceOracle_, oracleTolerance_)
-    PriceOracleMock(0)
-    Ownable()
-  {}
+  ) ChainlinkPriceOracle(assetOracle_, referenceOracle_, oracleTolerance_) PriceOracleMock(0) Ownable() {}
 
-  function getCurrentPrice()
-    public
-    view
-    override(ChainlinkPriceOracle, PriceOracleMock)
-    returns (uint256)
-  {
+  function getCurrentPrice() public view override(ChainlinkPriceOracle, PriceOracleMock) returns (uint256) {
     if (_price == 0) {
       return ChainlinkPriceOracle.getCurrentPrice();
     } else {

@@ -79,15 +79,9 @@ contract SwapRouterMock is AccessControl, ISwapRouter {
     require(params.recipient != address(0), "Recipient cannot be zero address");
     require(params.deadline >= block.timestamp, "Deadline in the past");
     require(params.amountOut > 0, "AmountOut cannot be zero");
-    require(
-      IERC20Metadata(params.tokenOut).balanceOf(address(this)) >= params.amountOut,
-      "Not enough balance"
-    );
+    require(IERC20Metadata(params.tokenOut).balanceOf(address(this)) >= params.amountOut, "Not enough balance");
 
-    uint256 amountInWad = params
-      .amountOut
-      .wadMul(_oracles[params.tokenOut].getCurrentPrice())
-      .wadMul(_slippage);
+    uint256 amountInWad = params.amountOut.wadMul(_oracles[params.tokenOut].getCurrentPrice()).wadMul(_slippage);
     amountIn = amountInWad / _wadToTokenInFactor;
 
     require(amountIn <= params.amountInMaximum, "amountInMaximum exceeded");

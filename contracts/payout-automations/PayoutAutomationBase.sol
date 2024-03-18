@@ -44,19 +44,13 @@ abstract contract PayoutAutomationBase is
   IPolicyPool internal immutable _policyPool;
 
   modifier onlyPolicyPool() {
-    require(
-      _msgSender() == address(_policyPool),
-      "PayoutAutomationBase: The caller must be the PolicyPool"
-    );
+    require(_msgSender() == address(_policyPool), "PayoutAutomationBase: The caller must be the PolicyPool");
     _;
   }
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IPolicyPool policyPool_) {
-    require(
-      address(policyPool_) != address(0),
-      "PayoutAutomationBase: policyPool_ cannot be the zero address"
-    );
+    require(address(policyPool_) != address(0), "PayoutAutomationBase: policyPool_ cannot be the zero address");
     _policyPool = policyPool_;
   }
 
@@ -140,10 +134,7 @@ abstract contract PayoutAutomationBase is
   }
 
   function recoverPolicy(uint256 policyId) external {
-    require(
-      ownerOf(policyId) == _msgSender(),
-      "PayoutAutomationBase: you must own the NFT to recover the policy"
-    );
+    require(ownerOf(policyId) == _msgSender(), "PayoutAutomationBase: you must own the NFT to recover the policy");
     // The following check is not needed since the contract logic should take care this always happens
     // require(_policyPool.ownerOf(policyId) == address(this));
     _burn(policyId);

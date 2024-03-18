@@ -38,15 +38,8 @@ contract ChainlinkPriceOracle is IPriceOracle {
    * @param oracleTolerance_ Max acceptable age of price data, in seconds
    */
   /// @custom:oz-upgrades-unsafe-allow constructor
-  constructor(
-    AggregatorV3Interface assetOracle_,
-    AggregatorV3Interface referenceOracle_,
-    uint256 oracleTolerance_
-  ) {
-    require(
-      address(assetOracle_) != address(0),
-      "PriceRiskModule: assetOracle_ cannot be the zero address"
-    );
+  constructor(AggregatorV3Interface assetOracle_, AggregatorV3Interface referenceOracle_, uint256 oracleTolerance_) {
+    require(address(assetOracle_) != address(0), "PriceRiskModule: assetOracle_ cannot be the zero address");
     _assetOracle = assetOracle_;
     _referenceOracle = referenceOracle_;
     _oracleTolerance = oracleTolerance_;
@@ -81,10 +74,7 @@ contract ChainlinkPriceOracle is IPriceOracle {
    * @param quote the aggregator for the quote asset.
    * @return The exchange rate from/to in Wad
    */
-  function _getExchangeRate(
-    AggregatorV3Interface base,
-    AggregatorV3Interface quote
-  ) internal view returns (uint256) {
+  function _getExchangeRate(AggregatorV3Interface base, AggregatorV3Interface quote) internal view returns (uint256) {
     uint256 basePrice = _scalePrice(_getLatestPrice(base), base.decimals(), WAD_DECIMALS);
     require(basePrice != 0, "Price from not available");
 
@@ -101,11 +91,7 @@ contract ChainlinkPriceOracle is IPriceOracle {
     return SafeCast.toUint256(price);
   }
 
-  function _scalePrice(
-    uint256 price,
-    uint8 priceDecimals,
-    uint8 decimals
-  ) internal pure returns (uint256) {
+  function _scalePrice(uint256 price, uint8 priceDecimals, uint8 decimals) internal pure returns (uint256) {
     if (priceDecimals < decimals) return price * 10 ** (decimals - priceDecimals);
     else return price / 10 ** (priceDecimals - decimals);
   }

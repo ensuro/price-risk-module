@@ -25,10 +25,7 @@ contract AAVERepayPayoutAutomation is PayoutAutomationBaseGelato {
     IWETH9 weth_,
     IPool aave_
   ) PayoutAutomationBaseGelato(policyPool_, automate_, weth_) {
-    require(
-      address(aave_) != address(0),
-      "AAVERepayPayoutAutomation: you must specify AAVE's Pool address"
-    );
+    require(address(aave_) != address(0), "AAVERepayPayoutAutomation: you must specify AAVE's Pool address");
     _aave = aave_;
     require(
       aave_.getReserveData(address(policyPool_.currency())).variableDebtTokenAddress != address(0),

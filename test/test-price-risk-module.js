@@ -1,7 +1,7 @@
 const { expect } = require("chai");
 const hre = require("hardhat");
 const { ethers } = hre;
-const { AddressZero } = ethers.constants;
+const { ZeroAddress } = ethers;
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const {
   _W,
@@ -41,7 +41,7 @@ describe("Test PriceRiskModule contract", function () {
 
     const { rm, oracle } = await addRiskModuleWithOracles(pool, premiumsAccount);
 
-    expect(await rm.oracle()).to.equal(oracle.address);
+    expect(await rm.oracle()).to.equal(oracle);
   });
 
   it("Should return the minDuration", async () => {
@@ -55,8 +55,7 @@ describe("Test PriceRiskModule contract", function () {
   it("Should revert if oracle = address(0)", async () => {
     const { pool, premiumsAccount } = await helpers.loadFixture(deployPoolFixture);
 
-    const oracle = { address: AddressZero };
-
+    const oracle = ZeroAddress;
     await expect(addPriceRiskModule(pool, premiumsAccount, oracle)).to.be.revertedWith(
       "PriceRiskModule: oracle_ cannot be the zero address"
     );
@@ -76,7 +75,7 @@ describe("Test PriceRiskModule contract", function () {
         _A("1000"),
         _A("10000"),
         "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1",
-        oracle.address
+        oracle
       )
     ).to.be.revertedWith("Initializable: contract is already initialized");
   });
@@ -86,22 +85,20 @@ describe("Test PriceRiskModule contract", function () {
 
     const { rm, oracle } = await addRiskModuleWithOracles(pool, premiumsAccount);
 
-    expect(await rm.oracle()).to.equal(oracle.address);
+    expect(await rm.oracle()).to.equal(oracle);
 
     const PriceOracleMock = await ethers.getContractFactory("PriceOracleMock");
     const newOracle = await PriceOracleMock.deploy(_W(2));
 
-    await expect(rm.setOracle(newOracle.address)).to.be.revertedWith(
-      accessControlMessage(owner.address, rm.address, "ORACLE_ADMIN_ROLE")
-    );
+    await expect(rm.setOracle(newOracle)).to.be.revertedWith(accessControlMessage(owner, rm, "ORACLE_ADMIN_ROLE"));
 
-    await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner.address);
+    await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner);
 
-    await expect(rm.setOracle(AddressZero)).to.be.revertedWith("PriceRiskModule: oracle_ cannot be the zero address");
+    await expect(rm.setOracle(ZeroAddress)).to.be.revertedWith("PriceRiskModule: oracle_ cannot be the zero address");
 
-    await expect(rm.setOracle(newOracle.address)).not.to.be.reverted;
+    await expect(rm.setOracle(newOracle)).not.to.be.reverted;
 
-    expect(await rm.oracle()).to.equal(newOracle.address);
+    expect(await rm.oracle()).to.equal(newOracle);
   });
 
   it("Should only allow ORACLE_ADMIN to set the minDuration", async () => {
@@ -111,12 +108,10 @@ describe("Test PriceRiskModule contract", function () {
 
     expect(await rm.minDuration()).to.equal(HOUR);
 
-    await expect(rm.setMinDuration(HOUR / 2)).to.be.revertedWith(
-      accessControlMessage(owner.address, rm.address, "ORACLE_ADMIN_ROLE")
-    );
+    await expect(rm.setMinDuration(HOUR / 2)).to.be.revertedWith(accessControlMessage(owner, rm, "ORACLE_ADMIN_ROLE"));
     expect(await rm.minDuration()).to.equal(HOUR);
 
-    await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner.address);
+    await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner);
 
     await expect(rm.setMinDuration(HOUR / 2)).not.to.be.reverted;
 
@@ -128,18 +123,16 @@ describe("Test PriceRiskModule contract", function () {
 
     const { rm } = await addRiskModuleWithOracles(pool, premiumsAccount);
 
-    const newCdf = Array(await rm.PRICE_SLOTS()).fill([0, 0, 0]);
+    const newCdf = Array(Number(await rm.PRICE_SLOTS())).fill([0, 0, 0]);
     newCdf[0] = [_W("0.2"), _W("0.3"), _W("0.9")];
     newCdf[newCdf.length - 1] = [_W("0.5"), _W(0), _W(0)];
 
     expect((await rm.getCDF(1))[0][0]).to.equal(_W(0));
     expect((await rm.getCDF(1))[newCdf.length - 1][0]).to.equal(_W(0));
 
-    await expect(rm.setCDF(1, newCdf)).to.be.revertedWith(
-      accessControlMessage(owner.address, rm.address, "PRICER_ROLE")
-    );
+    await expect(rm.setCDF(1, newCdf)).to.be.revertedWith(accessControlMessage(owner, rm, "PRICER_ROLE"));
 
-    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner);
     await expect(rm.connect(owner).setCDF(1, newCdf)).not.to.be.reverted;
 
     const actualCDF = await rm.getCDF(1);
@@ -166,11 +159,11 @@ describe("Test PriceRiskModule contract", function () {
 
     const { rm } = await addRiskModuleWithOracles(pool, premiumsAccount);
 
-    const newCdf = Array(await rm.PRICE_SLOTS()).fill([0, 0, 0]);
+    const newCdf = Array(Number(await rm.PRICE_SLOTS())).fill([0, 0, 0]);
     newCdf[0] = [_W("0.2"), _W("0.3"), _W("0.9")];
     newCdf[newCdf.length - 1] = [_W("0.5"), _W(0), _W(0)];
 
-    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner);
 
     await expect(rm.connect(owner).setCDF(0, newCdf)).to.be.revertedWith("|duration| < 1");
   });
@@ -193,7 +186,7 @@ describe("Test PriceRiskModule contract", function () {
     const { rm } = await addRiskModuleWithOracles(pool, premiumsAccount);
 
     await expect(
-      rm.connect(cust).newPolicy(_E("1.1"), true, _A(1000), await helpers.time.latest(), AddressZero)
+      rm.connect(cust).newPolicy(_E("1.1"), true, _A(1000), await helpers.time.latest(), ZeroAddress)
     ).to.be.revertedWith("onBehalfOf cannot be the zero address");
   });
 
@@ -222,9 +215,9 @@ describe("Test PriceRiskModule contract", function () {
     expect(premium0).to.equal(0);
     expect(price0.lossProb).to.equal(0);
 
-    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner);
 
-    const priceSlots = await rm.PRICE_SLOTS();
+    const priceSlots = Number(await rm.PRICE_SLOTS());
 
     const cdf = new Array(priceSlots);
     for (let i = 0; i < priceSlots; i++) {
@@ -265,8 +258,8 @@ describe("Test PriceRiskModule contract", function () {
     const { rm, oracle } = await addRiskModuleWithOracles(pool, premiumsAccount);
 
     // Setup pricing
-    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
-    const priceSlots = await rm.PRICE_SLOTS();
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner);
+    const priceSlots = Number(await rm.PRICE_SLOTS());
     const cdf = new Array(priceSlots);
     for (let i = 0; i < priceSlots; i++) cdf[i] = [_W(i / 100), 0, _W(1)];
     cdf[priceSlots - 1] = [_W("0.5"), 0, _W(1)];
@@ -274,7 +267,7 @@ describe("Test PriceRiskModule contract", function () {
     await rm.connect(owner).setCDF(3, cdf);
 
     // Setup min duration
-    await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner.address);
+    await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner);
     await rm.setMinDuration(HOUR * 2);
 
     // Setup oracle
@@ -284,18 +277,18 @@ describe("Test PriceRiskModule contract", function () {
     const triggerPrice = _E("1.1");
 
     // Duration = 2 hours is rejected
-    await expect(
-      rm.connect(cust).newPolicy(triggerPrice, true, _A(1000), start + HOUR * 2, cust.address)
-    ).to.be.revertedWith("The policy expires too soon");
+    await expect(rm.connect(cust).newPolicy(triggerPrice, true, _A(1000), start + HOUR * 2, cust)).to.be.revertedWith(
+      "The policy expires too soon"
+    );
 
     // Duration = 3 hours is accepted
     const expiration = start + HOUR * 3;
     const [premium, pricing] = await rm.pricePolicy(triggerPrice, true, _A(1000), expiration);
     expect(pricing.lossProb).to.be.equal(_W("0.27"));
 
-    await currency.connect(cust).approve(pool.address, premium);
+    await currency.connect(cust).approve(pool, premium);
 
-    const tx = await rm.connect(cust).newPolicy(triggerPrice, true, _A(1000), expiration, cust.address);
+    const tx = await rm.connect(cust).newPolicy(triggerPrice, true, _A(1000), expiration, cust);
     const receipt = await tx.wait();
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
     const policyId = newPolicyEvt.args.policy.id;
@@ -315,8 +308,8 @@ describe("Test PriceRiskModule contract", function () {
     const { rm, oracle } = await addRiskModuleWithOracles(pool, premiumsAccount);
 
     // Setup pricing
-    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
-    const priceSlots = await rm.PRICE_SLOTS();
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner);
+    const priceSlots = Number(await rm.PRICE_SLOTS());
     const cdf = new Array(priceSlots);
     for (let i = 0; i < priceSlots; i++) cdf[i] = [_W(i / 100), _W((i * 2) / 100), _W((i * 3) / 100)];
     await rm.connect(owner).setCDF(3, cdf);
@@ -334,15 +327,16 @@ describe("Test PriceRiskModule contract", function () {
     expect(lowPricing.jrCollRatio).to.be.equal(_W("0.54"));
     expect(lowPricing.collRatio).to.be.equal(_W("0.81"));
 
-    await currency.connect(cust).approve(pool.address, premium);
+    await currency.connect(cust).approve(pool, premium);
 
-    const tx = await rm.connect(cust).newPolicy(lowTriggerPrice, true, _A(1000), expiration, cust.address);
+    const tx = await rm.connect(cust).newPolicy(lowTriggerPrice, true, _A(1000), expiration, cust);
     const receipt = await tx.wait();
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
     const policyId = newPolicyEvt.args.policy.id;
-    expect(policyId.mask(96)).to.be.equal(1);
-    expect(policyId).to.be.equal(makePolicyId(rm.address, 1));
-    await expect(tx).to.emit(rm, "NewPricePolicy").withArgs(cust.address, policyId, lowTriggerPrice, true);
+    const MASK_96 = (1n << 96n) - 1n;
+    expect(policyId & MASK_96).to.be.equal(1);
+    expect(policyId).to.be.equal(makePolicyId(rm, 1));
+    await expect(tx).to.emit(rm, "NewPricePolicy").withArgs(cust, policyId, lowTriggerPrice, true);
 
     expect(await rm.getPolicyData(policyId)).to.be.deep.equal([newPolicyEvt.args.policy, lowTriggerPrice, true]);
 
@@ -352,11 +346,11 @@ describe("Test PriceRiskModule contract", function () {
     expect(highPricing.collRatio).to.be.equal(_W("0.60"));
     expect(hPremium).to.be.equal(_A("20.000685"));
 
-    await currency.connect(cust).approve(pool.address, hPremium);
-    const policyId2 = makePolicyId(rm.address, 2);
-    await expect(rm.connect(cust).newPolicy(highTriggerPrice, false, _A(100), expiration, cust.address))
+    await currency.connect(cust).approve(pool, hPremium);
+    const policyId2 = makePolicyId(rm, 2);
+    await expect(rm.connect(cust).newPolicy(highTriggerPrice, false, _A(100), expiration, cust))
       .to.emit(rm, "NewPricePolicy")
-      .withArgs(cust.address, policyId2, highTriggerPrice, false);
+      .withArgs(cust, policyId2, highTriggerPrice, false);
 
     await helpers.time.increase(HOUR);
     await oracle.setPrice(_E("1.09"));
@@ -385,9 +379,9 @@ describe("Test PriceRiskModule contract", function () {
     expect(price0).to.equal(0);
     expect(princing0.lossProb).to.equal(0);
 
-    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner);
 
-    const priceSlots = await rm.PRICE_SLOTS();
+    const priceSlots = Number(await rm.PRICE_SLOTS());
 
     const cdf = new Array(priceSlots);
     for (let i = 0; i < priceSlots; i++) cdf[i] = [_W(i / 100), 0, _W(1)];
@@ -424,9 +418,9 @@ describe("Test PriceRiskModule contract", function () {
 
     await oracle.setPrice(_E("2000"));
 
-    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner);
 
-    const priceSlots = await rm.PRICE_SLOTS();
+    const priceSlots = Number(await rm.PRICE_SLOTS());
     const cdf = Array(priceSlots).fill([0, 0, 0]);
     cdf[0] = [_W("0.5"), 0, _W(1)];
     cdf[2] = [_W("0.7"), 0, _W(1)];
@@ -458,9 +452,9 @@ describe("Test PriceRiskModule contract", function () {
     const { rm, oracle } = await addRiskModuleWithOracles(pool, premiumsAccount, undefined, _W("0.05"));
     await oracle.setPrice(_E("2963.682"));
 
-    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner);
 
-    const priceSlots = await rm.PRICE_SLOTS();
+    const priceSlots = Number(await rm.PRICE_SLOTS());
     const cdf = Array(priceSlots).fill([0, 0, 0]);
     cdf[0] = [_W("0.5"), 0, _W(1)];
     cdf[5] = [_W("0.03"), 0, _W(1)];
@@ -499,10 +493,10 @@ describe("Test PriceRiskModule contract", function () {
 
     await oracle.setPrice(_E("1.4"));
 
-    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner);
 
     // Set price
-    const priceSlots = await rm.PRICE_SLOTS();
+    const priceSlots = Number(await rm.PRICE_SLOTS());
     const cdf = Array(priceSlots).fill([0, 0, 0]);
     cdf[20] = [_W("0.03"), 0, _W(1)];
     cdf[21] = [_W("0.05"), 0, _W(1)];
@@ -512,22 +506,22 @@ describe("Test PriceRiskModule contract", function () {
     const start = await helpers.time.latest();
     const expiration = start + HOUR * 2;
 
-    await expect(rm.connect(cust).newPolicy(_E("1.2"), true, _A(1000), expiration, cust.address)).to.be.revertedWith(
+    await expect(rm.connect(cust).newPolicy(_E("1.2"), true, _A(1000), expiration, cust)).to.be.revertedWith(
       "Either duration or percentage jump not supported"
     );
 
     const [premium, pricing] = await rm.pricePolicy(_E("1.1"), true, _A(1000), expiration);
     expect(pricing.lossProb).to.be.equal(_W("0.05"));
 
-    await currency.connect(cust).approve(pool.address, premium);
+    await currency.connect(cust).approve(pool, premium);
 
-    let tx = await rm.connect(cust).newPolicy(_E("1.1"), true, _A(1000), expiration, cust.address);
+    let tx = await rm.connect(cust).newPolicy(_E("1.1"), true, _A(1000), expiration, cust);
     let receipt = await tx.wait();
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
     const newPricePolicyEvt = getTransactionEvent(rm.interface, receipt, "NewPricePolicy");
 
     const policyId = newPolicyEvt.args.policy.id;
-    expect(policyId).to.equal(`${rm.address}000000000000000000000001`);
+    expect(policyId).to.equal(`${rm.target}000000000000000000000001`);
 
     expect(newPolicyEvt.args.policy.premium).to.closeTo(premium, _A(0.0001));
     expect(newPolicyEvt.args.policy.payout).to.equal(_A(1000));
@@ -556,8 +550,8 @@ describe("Test PriceRiskModule contract", function () {
     await oracle.setPrice(_E("1.4"));
 
     // Set price
-    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
-    const priceSlots = await rm.PRICE_SLOTS();
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner);
+    const priceSlots = Number(await rm.PRICE_SLOTS());
     const cdf = Array(priceSlots).fill([0, 0, 0]);
     cdf[20] = [_W("0.02"), 0, _W(1)];
     cdf[21] = [_W("0.04"), 0, _W(1)];
@@ -568,14 +562,14 @@ describe("Test PriceRiskModule contract", function () {
 
     const [premium, princing] = await rm.pricePolicy(_E("1.7"), false, _A(1000), start + HOUR * 2);
     expect(princing.lossProb).to.be.equal(_W("0.04"));
-    await currency.connect(cust).approve(pool.address, premium);
+    await currency.connect(cust).approve(pool, premium);
 
-    let tx = await rm.connect(cust).newPolicy(_E("1.7"), false, _A(1000), start + HOUR * 2, cust.address);
+    let tx = await rm.connect(cust).newPolicy(_E("1.7"), false, _A(1000), start + HOUR * 2, cust);
     let receipt = await tx.wait();
     const newPolicyEvt = getTransactionEvent(pool.interface, receipt, "NewPolicy");
     const newPricePolicyEvt = getTransactionEvent(rm.interface, receipt, "NewPricePolicy");
     const policyId = newPolicyEvt.args.policy.id;
-    expect(policyId).to.equal(`${rm.address}000000000000000000000001`);
+    expect(policyId).to.equal(`${rm.target}000000000000000000000001`);
     expect(newPolicyEvt.args.policy.premium).to.closeTo(premium, _A(0.0001));
     expect(newPolicyEvt.args.policy.payout).to.equal(_A(1000));
     expect(newPolicyEvt.args.policy.lossProb).to.equal(_W("0.04"));
@@ -600,25 +594,25 @@ describe("Test PriceRiskModule contract", function () {
 
     const { rm } = await addRiskModuleWithOracles(pool, premiumsAccount);
 
-    await expect(rm.pause()).to.be.revertedWith(accessControlMessage(owner.address, rm.address, "GUARDIAN_ROLE"));
+    await expect(rm.pause()).to.be.revertedWith(accessControlMessage(owner, rm, "GUARDIAN_ROLE"));
     expect(await rm.paused()).to.equal(false);
 
-    await grantRole(hre, accessManager, "GUARDIAN_ROLE", owner.address);
+    await grantRole(hre, accessManager, "GUARDIAN_ROLE", owner);
     await rm.pause();
     expect(await rm.paused()).to.equal(true);
 
-    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner.address);
-    const priceSlots = await rm.PRICE_SLOTS();
+    await grantComponentRole(hre, accessManager, rm, "PRICER_ROLE", owner);
+    const priceSlots = Number(await rm.PRICE_SLOTS());
     const cdf = Array(priceSlots).fill([0, 0, 0]);
     await expect(rm.setCDF(1, cdf)).to.be.revertedWith("Pausable: paused");
 
     await expect(
-      rm.newPolicy(_E("1.1"), true, _A(1000), (await helpers.time.latest()) + HOUR, cust.address)
+      rm.newPolicy(_E("1.1"), true, _A(1000), (await helpers.time.latest()) + HOUR, cust)
     ).to.be.revertedWith("Pausable: paused");
     await expect(rm.triggerPolicy(1)).to.be.revertedWith("Pausable: paused");
 
-    await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner.address);
-    await expect(rm.setOracle(AddressZero)).to.be.revertedWith("Pausable: paused");
+    await grantComponentRole(hre, accessManager, rm, "ORACLE_ADMIN_ROLE", owner);
+    await expect(rm.setOracle(ZeroAddress)).to.be.revertedWith("Pausable: paused");
 
     await expect(rm.setMinDuration(1800)).to.be.revertedWith("Pausable: paused");
   });
@@ -631,7 +625,7 @@ describe("Test PriceRiskModule contract", function () {
     );
 
     const pool = await deployPool({
-      currency: currency.address,
+      currency: currency,
       grantRoles: ["LEVEL1_ROLE", "LEVEL2_ROLE"],
       treasuryAddress: "0x87c47c9a5a2aa74ae714857d64911d9a091c25b1", // Random address
     });
@@ -640,24 +634,14 @@ describe("Test PriceRiskModule contract", function () {
     const srEtk = await addEToken(pool, {});
     const jrEtk = await addEToken(pool, {});
 
-    const premiumsAccount = await deployPremiumsAccount(pool, {
-      srEtkAddr: srEtk.address,
-      jrEtkAddr: jrEtk.address,
-    });
+    const premiumsAccount = await deployPremiumsAccount(pool, { srEtk: srEtk, jrEtk: jrEtk });
 
     const accessManager = await ethers.getContractAt("AccessManager", await pool.access());
 
-    await currency.connect(lp).approve(pool.address, _A("8000"));
-    await pool.connect(lp).deposit(srEtk.address, _A("5000"));
-    await pool.connect(lp).deposit(jrEtk.address, _A("3000"));
-    return {
-      pool,
-      currency,
-      accessManager,
-      jrEtk,
-      srEtk,
-      premiumsAccount,
-    };
+    await currency.connect(lp).approve(pool, _A("8000"));
+    await pool.connect(lp).deposit(srEtk, _A("5000"));
+    await pool.connect(lp).deposit(jrEtk, _A("3000"));
+    return { pool, currency, accessManager, jrEtk, srEtk, premiumsAccount };
   }
 });
 
@@ -680,9 +664,10 @@ async function addRiskModuleWithOracles(
 
 async function addPriceRiskModule(pool, premiumsAccount, oracle, slotSize = _W("0.01")) {
   const PriceRiskModule = await ethers.getContractFactory("PriceRiskModule");
+  const oracleAddr = await ethers.resolveAddress(oracle);
   const rm = await addRiskModule(pool, premiumsAccount, PriceRiskModule, {
     extraConstructorArgs: [slotSize],
-    extraArgs: [oracle.address],
+    extraArgs: [oracleAddr],
   });
 
   return rm;

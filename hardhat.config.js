@@ -23,6 +23,17 @@ module.exports = {
     runOnCompile: false,
     disambiguatePaths: false,
   },
+  networks: {
+    hardhat: {
+      chains: {
+        137: {
+          hardforkHistory: {
+            london: 54659737,
+          },
+        },
+      },
+    },
+  },
   dependencyCompiler: {
     paths: [
       "@ensuro/core/contracts/PolicyPool.sol",

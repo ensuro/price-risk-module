@@ -50,12 +50,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
 
   State internal _state;
 
-  event NewPricePolicy(
-    address indexed customer,
-    uint256 policyId,
-    uint256 triggerPrice,
-    bool lower
-  );
+  event NewPricePolicy(address indexed customer, uint256 policyId, uint256 triggerPrice, bool lower);
 
   /**
    * @dev Constructs the PriceRiskModule.
@@ -97,15 +92,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     address wallet_,
     IPriceOracle oracle_
   ) public initializer {
-    __RiskModule_init(
-      name_,
-      collRatio_,
-      ensuroPpFee_,
-      srRoc_,
-      maxPayoutPerPolicy_,
-      exposureLimit_,
-      wallet_
-    );
+    __RiskModule_init(name_, collRatio_, ensuroPpFee_, srRoc_, maxPayoutPerPolicy_, exposureLimit_, wallet_);
     require(address(oracle_) != address(0), "PriceRiskModule: oracle_ cannot be the zero address");
     _state = State({internalId: 1, oracle: oracle_, minDuration: 3600});
   }
@@ -136,12 +123,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     address onBehalfOf
   ) external override whenNotPaused returns (uint256) {
     require(onBehalfOf != address(0), "onBehalfOf cannot be the zero address");
-    (uint256 premium, SlotPricing memory pricing) = pricePolicy(
-      triggerPrice,
-      lower,
-      payout,
-      expiration
-    );
+    (uint256 premium, SlotPricing memory pricing) = pricePolicy(triggerPrice, lower, payout, expiration);
     require(premium > 0, "Either duration or percentage jump not supported");
 
     uint256 policyId = (uint256(uint160(address(this))) << 96) + _state.internalId;
@@ -179,19 +161,10 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
    */
   function triggerPolicy(uint256 policyId) external override whenNotPaused {
     PolicyData storage policy = _policies[policyId];
-    require(
-      (block.timestamp - policy.ensuroPolicy.start) >= _state.minDuration,
-      "Too soon to trigger the policy"
-    );
+    require((block.timestamp - policy.ensuroPolicy.start) >= _state.minDuration, "Too soon to trigger the policy");
     uint256 currentPrice = oracle().getCurrentPrice();
-    require(
-      !policy.lower || currentPrice <= policy.triggerPrice,
-      "Condition not met CurrentPrice > triggerPrice"
-    );
-    require(
-      policy.lower || currentPrice >= policy.triggerPrice,
-      "Condition not met CurrentPrice < triggerPrice"
-    );
+    require(!policy.lower || currentPrice <= policy.triggerPrice, "Condition not met CurrentPrice > triggerPrice");
+    require(policy.lower || currentPrice >= policy.triggerPrice, "Condition not met CurrentPrice < triggerPrice");
 
     _policyPool.resolvePolicy(policy.ensuroPolicy, policy.ensuroPolicy.payout);
     // Be aware that `_policies` is not deleted when a policy is resolved, so getPolicyData will keep returning
@@ -306,9 +279,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
    * @dev Sets the minimum duration before a policy can be triggered
    * @param minDuration_ The new minimum duration in seconds.
    */
-  function setMinDuration(
-    uint40 minDuration_
-  ) external onlyComponentRole(ORACLE_ADMIN_ROLE) whenNotPaused {
+  function setMinDuration(uint40 minDuration_) external onlyComponentRole(ORACLE_ADMIN_ROLE) whenNotPaused {
     _state.minDuration = uint32(minDuration_);
     _parameterChanged(IAccessManager.GovernanceActions.rmFiller2, uint256(minDuration_), false);
   }
@@ -317,16 +288,10 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
    * @dev Changes the price oracle
    * @param oracle_ The new price oracle to use.
    */
-  function setOracle(
-    IPriceOracle oracle_
-  ) external onlyComponentRole(ORACLE_ADMIN_ROLE) whenNotPaused {
+  function setOracle(IPriceOracle oracle_) external onlyComponentRole(ORACLE_ADMIN_ROLE) whenNotPaused {
     require(address(oracle_) != address(0), "PriceRiskModule: oracle_ cannot be the zero address");
     _state.oracle = oracle_;
-    _parameterChanged(
-      IAccessManager.GovernanceActions.rmFiller3,
-      uint256(uint160(address(oracle_))),
-      false
-    );
+    _parameterChanged(IAccessManager.GovernanceActions.rmFiller3, uint256(uint160(address(oracle_))), false);
   }
 
   function getCDF(int40 duration) external view returns (SlotPricing[PRICE_SLOTS] memory ret) {

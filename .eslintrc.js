@@ -4,6 +4,7 @@ module.exports = {
     es6: true,
     node: true,
     mocha: true,
+    es2020: true,
   },
   extends: ["eslint:recommended", "prettier"],
   globals: {
@@ -74,7 +75,6 @@ module.exports = {
     "no-array-constructor": "error",
     "no-async-promise-executor": "error",
     "no-await-in-loop": "off",
-    "no-bitwise": "error",
     "no-buffer-constructor": "error",
     "no-caller": "error",
     "no-catch-shadow": "error",
