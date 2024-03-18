@@ -4,6 +4,7 @@ const { ethers } = hre;
 const { MaxUint256, ZeroAddress } = ethers;
 const helpers = require("@nomicfoundation/hardhat-network-helpers");
 const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
+const { Protocols, buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
 
 const {
   _E,
@@ -48,12 +49,6 @@ const Module = {
   SINGLE_EXEC: 3,
 };
 
-// enum
-const Protocols = {
-  undefined: 0,
-  uniswap: 1,
-};
-
 function rightPaddedFunctionSelector(contract, signature) {
   return BigInt(contract.interface.getFunction(signature).selector) << BigInt(256 - 32);
 }
@@ -73,14 +68,10 @@ describe("Test Gelato Task Creation / Execution", function () {
   it("Should never allow reinitialization", async () => {
     const { fpa, lp, oracle } = await helpers.loadFixture(forwardPayoutAutomationFixture);
 
-    let swapCustomParams = ethers.AbiCoder.defaultAbiCoder().encode(
-      ["uint24", "address"],
-      [_A("0.0005"), ADDRESSES.SwapRouter]
+    const swapConfig = buildUniswapConfig(_W(0), _A("0.0005"), ADDRESSES.SwapRouter);
+    await expect(fpa.initialize("Another Name", "SYMB", lp, oracle, swapConfig)).to.be.revertedWith(
+      "Initializable: contract is already initialized"
     );
-
-    await expect(
-      fpa.initialize("Another Name", "SYMB", lp, oracle, [Protocols.uniswap, _W(0), swapCustomParams])
-    ).to.be.revertedWith("Initializable: contract is already initialized");
   });
 
   it("Should check event methods are only callable by the pool", async () => {
@@ -102,32 +93,32 @@ describe("Test Gelato Task Creation / Execution", function () {
     const fpa = await ForwardPayoutAutomation.deploy(pool, automate, ADDRESSES.WMATIC);
     await fpa.waitForDeployment();
 
+    let swapConfig = buildUniswapConfig(_W(0), _A("0.0005"), ADDRESSES.SwapRouter);
+    await expect(fpa.initialize("The Name", "SYMB", admin, oracle, swapConfig)).to.be.revertedWith(
+      "SwapLibrary: maxSlippage cannot be zero"
+    );
+
+    swapConfig = buildUniswapConfig(_W("0.02"), _A("0.0005"), ADDRESSES.SwapRouter);
+    await expect(fpa.initialize("The Name", "SYMB", admin, ZeroAddress, swapConfig)).to.be.revertedWith(
+      "PayoutAutomationBaseGelato: oracle address cannot be zero"
+    );
+
+    swapConfig = buildUniswapConfig(_W("0.02"), _A("0.0005"), ZeroAddress);
+    await expect(fpa.initialize("The Name", "SYMB", admin, oracle, swapConfig)).to.be.revertedWith(
+      "SwapLibrary: SwapRouter address cannot be zero"
+    );
+
+    swapConfig = buildUniswapConfig(_W("0.02"), _A(0), ADDRESSES.SwapRouter);
+    await expect(fpa.initialize("The Name", "SYMB", admin, oracle, swapConfig)).to.be.revertedWith(
+      "SwapLibrary: feeTier cannot be zero"
+    );
+
+    swapConfig = buildUniswapConfig(_W("0.02"), _A("0.0005"), ADDRESSES.SwapRouter);
     let swapCustomParams = ethers.AbiCoder.defaultAbiCoder().encode(
       ["uint24", "address"],
       [_A("0.0005"), ADDRESSES.SwapRouter]
     );
-
-    await expect(
-      fpa.initialize("The Name", "SYMB", admin, oracle, [Protocols.uniswap, _W(0), swapCustomParams])
-    ).to.be.revertedWith("SwapLibrary: maxSlippage cannot be zero");
-
-    await expect(
-      fpa.initialize("The Name", "SYMB", admin, ZeroAddress, [Protocols.uniswap, _W("0.02"), swapCustomParams])
-    ).to.be.revertedWith("PayoutAutomationBaseGelato: oracle address cannot be zero");
-
-    let routerZeroAddr = ethers.AbiCoder.defaultAbiCoder().encode(["uint24", "address"], [_A("0.0005"), ZeroAddress]);
-
-    await expect(
-      fpa.initialize("The Name", "SYMB", admin, oracle, [Protocols.uniswap, _W("0.02"), routerZeroAddr])
-    ).to.be.revertedWith("SwapLibrary: SwapRouter address cannot be zero");
-
-    let zeroFeeTier = ethers.AbiCoder.defaultAbiCoder().encode(["uint24", "address"], [_A(0), ADDRESSES.SwapRouter]);
-
-    await expect(
-      fpa.initialize("The Name", "SYMB", admin, oracle, [Protocols.uniswap, _W("0.02"), zeroFeeTier])
-    ).to.be.revertedWith("SwapLibrary: feeTier cannot be zero");
-
-    await expect(fpa.initialize("The Name", "SYMB", admin, oracle, [Protocols.uniswap, _W("0.02"), swapCustomParams]))
+    await expect(fpa.initialize("The Name", "SYMB", admin, oracle, swapConfig))
       .to.emit(fpa, "OracleSet")
       .withArgs(oracle)
       .to.emit(fpa, "SwapConfigSet")
@@ -135,42 +126,43 @@ describe("Test Gelato Task Creation / Execution", function () {
   });
 
   it("Allows setting oracle", async () => {
-    const { fpa, oracle, lp, signers, oracleSetter } = await helpers.loadFixture(forwardPayoutAutomationFixture);
+    const { fpa, oracle, lp, signers, oracleAdmin } = await helpers.loadFixture(forwardPayoutAutomationFixture);
 
     expect(await fpa.oracle()).to.equal(oracle);
     await expect(fpa.connect(lp).setOracle(ZeroAddress)).to.be.revertedWith(
       accessControlMessage(lp, null, "SET_ORACLE_ROLE")
     );
 
-    await expect(fpa.connect(oracleSetter).setOracle(ZeroAddress)).to.be.revertedWith(
+    await expect(fpa.connect(oracleAdmin).setOracle(ZeroAddress)).to.be.revertedWith(
       "PayoutAutomationBaseGelato: oracle address cannot be zero"
     );
-    await expect(fpa.connect(oracleSetter).setOracle(signers[1]) /* some random address */)
+    await expect(fpa.connect(oracleAdmin).setOracle(signers[1]) /* some random address */)
       .to.emit(fpa, "OracleSet")
       .withArgs(signers[1]);
     expect(await fpa.oracle()).to.equal(signers[1]);
   });
 
   it("Only SWAP_CONFIG_ROLE can set swap config", async () => {
-    const { fpa, swapDefaultParams, swapConfigSetter, lp, signers } =
-      await helpers.loadFixture(forwardPayoutAutomationFixture);
+    const { fpa, swapConfigAdmin, lp, signers } = await helpers.loadFixture(forwardPayoutAutomationFixture);
 
-    await expect(fpa.connect(lp).setSwapConfig([Protocols.uniswap, _W("0.1"), swapDefaultParams])).to.be.revertedWith(
+    const swapConfig = buildUniswapConfig(_W("0.1"), _A("0.0005"), ADDRESSES.SwapRouter);
+    await expect(fpa.connect(lp).setSwapConfig(swapConfig)).to.be.revertedWith(
       accessControlMessage(lp, null, "SET_SWAP_CONFIG_ROLE")
     );
     // some random address as router
     const signerAddr = await ethers.resolveAddress(signers[1]);
     let randomAddr = ethers.AbiCoder.defaultAbiCoder().encode(["uint24", "address"], [_A("0.0005"), signerAddr]);
-    await expect(fpa.connect(swapConfigSetter).setSwapConfig([Protocols.uniswap, _W("0.07"), randomAddr]))
+    await expect(fpa.connect(swapConfigAdmin).setSwapConfig([Protocols.uniswap, _W("0.07"), randomAddr]))
       .to.emit(fpa, "SwapConfigSet")
       .withArgs([Protocols.uniswap, _W("0.07"), randomAddr]);
   });
 
   it("Only SET_ORACLE_ROLE can set oracle and SET_SWAP_CONFIG_ROLE can set swap config", async () => {
-    const { fpa, swapDefaultParams, swapConfigSetter, oracleSetter, lp, signers } =
+    const { fpa, swapConfigAdmin, oracleAdmin, lp, signers } =
       await helpers.loadFixture(forwardPayoutAutomationFixture);
 
-    await expect(fpa.connect(lp).setSwapConfig([Protocols.uniswap, _W("0.1"), swapDefaultParams])).to.be.revertedWith(
+    const swapConfig = buildUniswapConfig(_W("0.1"), _A("0.0005"), ADDRESSES.SwapRouter);
+    await expect(fpa.connect(lp).setSwapConfig(swapConfig)).to.be.revertedWith(
       accessControlMessage(lp, null, "SET_SWAP_CONFIG_ROLE")
     );
 
@@ -181,48 +173,53 @@ describe("Test Gelato Task Creation / Execution", function () {
     // some random address as router
     const signerAddr = await ethers.resolveAddress(signers[1]);
     let randomAddr = ethers.AbiCoder.defaultAbiCoder().encode(["uint24", "address"], [_A("0.0005"), signerAddr]);
-    await expect(fpa.connect(swapConfigSetter).setSwapConfig([Protocols.uniswap, _W("0.07"), randomAddr]))
+    await expect(fpa.connect(swapConfigAdmin).setSwapConfig([Protocols.uniswap, _W("0.07"), randomAddr]))
       .to.emit(fpa, "SwapConfigSet")
       .withArgs([Protocols.uniswap, _W("0.07"), randomAddr]);
 
-    await expect(fpa.connect(oracleSetter).setOracle(signers[1])).to.emit(fpa, "OracleSet").withArgs(signerAddr);
+    await expect(fpa.connect(oracleAdmin).setOracle(signers[1])).to.emit(fpa, "OracleSet").withArgs(signerAddr);
     expect(await fpa.oracle()).to.equal(signerAddr);
   });
 
-  // eslint-disable-next-line no-restricted-syntax
   it("Allows setting swap config", async () => {
-    const { fpa, lp, swapDefaultParams, swapConfigSetter, signers } =
-      await helpers.loadFixture(forwardPayoutAutomationFixture);
+    const { fpa, lp, swapConfigAdmin, signers } = await helpers.loadFixture(forwardPayoutAutomationFixture);
+
+    let swapConfigParams = buildUniswapConfig(_W("0.05"), _A("0.0005"), ADDRESSES.SwapRouter);
 
     let swapConfig = await fpa.swapConfig();
+    const swapDefaultParams = ethers.AbiCoder.defaultAbiCoder().encode(
+      ["uint24", "address"],
+      [_A("0.0005"), ADDRESSES.SwapRouter]
+    );
     expect(swapConfig.protocol).to.equal(1);
     expect(swapConfig.maxSlippage).to.equal(_W("0.02"));
     expect(swapConfig.customParams).to.equal(swapDefaultParams);
-    await expect(fpa.connect(lp).setSwapConfig([Protocols.uniswap, _W("0.05"), swapDefaultParams])).to.be.revertedWith(
+    await expect(fpa.connect(lp).setSwapConfig(swapConfigParams)).to.be.revertedWith(
       accessControlMessage(lp, null, "SET_SWAP_CONFIG_ROLE")
     );
 
-    let routerZeroAddr = ethers.AbiCoder.defaultAbiCoder().encode(["uint24", "address"], [_A("0.0005"), ZeroAddress]);
-    await expect(
-      fpa.connect(swapConfigSetter).setSwapConfig([Protocols.uniswap, _W("0.02"), routerZeroAddr])
-    ).to.be.revertedWith("SwapLibrary: SwapRouter address cannot be zero");
+    swapConfigParams = buildUniswapConfig(_W("0.02"), _A("0.0005"), ZeroAddress);
+    await expect(fpa.connect(swapConfigAdmin).setSwapConfig(swapConfigParams)).to.be.revertedWith(
+      "SwapLibrary: SwapRouter address cannot be zero"
+    );
 
-    await expect(fpa.connect(swapConfigSetter).setSwapConfig([3, _W("0.04"), swapDefaultParams])).to.be.reverted;
+    await expect(fpa.connect(swapConfigAdmin).setSwapConfig([3, _W("0.04"), swapDefaultParams])).to.be.reverted;
 
     await expect(
-      fpa.connect(swapConfigSetter).setSwapConfig([Protocols.undefined, _W("0.04"), swapDefaultParams])
+      fpa.connect(swapConfigAdmin).setSwapConfig([Protocols.undefined, _W("0.04"), swapDefaultParams])
     ).to.be.revertedWith("SwapLibrary: invalid protocol");
 
     // some random address as router
     const signerAddr = await ethers.resolveAddress(signers[1]);
-    let randomAddr = ethers.AbiCoder.defaultAbiCoder().encode(["uint24", "address"], [_A("0.0005"), signerAddr]);
-    await expect(fpa.connect(swapConfigSetter).setSwapConfig([Protocols.uniswap, _W("0.06"), randomAddr]))
+    swapConfigParams = buildUniswapConfig(_W("0.06"), _A("0.0005"), signerAddr);
+    await expect(fpa.connect(swapConfigAdmin).setSwapConfig(swapConfigParams))
       .to.emit(fpa, "SwapConfigSet")
-      .withArgs([Protocols.uniswap, _W("0.06"), randomAddr]);
+      .withArgs(swapConfigParams);
 
     swapConfig = await fpa.swapConfig();
     expect(swapConfig.protocol).to.equal(1);
     expect(swapConfig.maxSlippage).to.equal(_W("0.06"));
+    let randomAddr = ethers.AbiCoder.defaultAbiCoder().encode(["uint24", "address"], [_A("0.0005"), signerAddr]);
     expect(swapConfig.customParams).to.equal(randomAddr);
   });
 
@@ -354,18 +351,16 @@ describe("Test Gelato Task Creation / Execution", function () {
 
 describe("SwapRouterMock", () => {
   it("Works with payout automation", async () => {
-    const { fpa, gelato, swapConfigSetter, currency, admin, cust, rm, oracle, swapRouter, wmatic } =
+    const { fpa, gelato, swapConfigAdmin, currency, admin, cust, rm, oracle, swapRouter, wmatic } =
       await helpers.loadFixture(swapRouterMockFixture);
     // Allow the payout automation contract to perform swaps
     await grantRole(hre, swapRouter.connect(admin), "SWAP_ROLE", fpa);
 
     // Use the mock swapRouter in the payout automation
     const swapRouterAddr = await ethers.resolveAddress(swapRouter);
-    const swapDefaultParams = ethers.AbiCoder.defaultAbiCoder().encode(
-      ["uint24", "address"],
-      [_A("0.0005"), swapRouterAddr]
-    );
-    await fpa.connect(swapConfigSetter).setSwapConfig([Protocols.uniswap, _W("0.05"), swapDefaultParams]);
+    const swapConfig = buildUniswapConfig(_W("0.05"), _A("0.0005"), swapRouterAddr);
+    await fpa.connect(swapConfigAdmin).setSwapConfig(swapConfig);
+    await fpa.connect(swapConfigAdmin).setSwapConfig(swapConfig);
 
     // Create and trigger a policy
     const start = await helpers.time.latest();
@@ -486,7 +481,7 @@ describe("SwapRouterMock", () => {
 });
 
 async function swapRouterMockFixture() {
-  const { fpa, gelato, guardian, swapConfigSetter, currency, admin, cust, rm, oracle, marketMaker, signers } =
+  const { fpa, gelato, guardian, swapConfigAdmin, currency, admin, cust, rm, oracle, marketMaker, signers } =
     await helpers.loadFixture(forwardPayoutAutomationFixture);
 
   const SwapRouterMock = await ethers.getContractFactory("SwapRouterMock");
@@ -509,7 +504,7 @@ async function swapRouterMockFixture() {
     fpa,
     gelato,
     guardian,
-    swapConfigSetter,
+    swapConfigAdmin,
     currency,
     admin,
     cust,
@@ -526,7 +521,7 @@ async function swapRouterMockFixture() {
 async function forwardPayoutAutomationFixture() {
   await setupChain(48475972);
 
-  const [owner, lp, cust, gelato, admin, guardian, oracleSetter, swapConfigSetter, marketMaker, ...signers] =
+  const [owner, lp, cust, gelato, admin, guardian, oracleAdmin, swapConfigAdmin, marketMaker, ...signers] =
     await ethers.getSigners();
 
   const currency = await initForkCurrency(
@@ -576,21 +571,18 @@ async function forwardPayoutAutomationFixture() {
   const automateAddr = await ethers.resolveAddress(automate);
 
   const SwapLibrary = await ethers.getContractFactory("SwapLibrary");
-  const swap = await SwapLibrary.deploy();
-  const swapAddr = await ethers.resolveAddress(swap);
-  // feeTier and Swap Router
-  const swapDefaultParams = ethers.AbiCoder.defaultAbiCoder().encode(
-    ["uint24", "address"],
-    [_A("0.0005"), ADDRESSES.SwapRouter]
-  );
+  const deployedSwapLibrary = await SwapLibrary.deploy();
+  const swapAddr = await ethers.resolveAddress(deployedSwapLibrary);
 
   const ForwardPayoutAutomation = await ethers.getContractFactory("ForwardPayoutAutomation", {
     libraries: { SwapLibrary: swapAddr },
   });
   const adminAddr = await ethers.resolveAddress(admin);
+
+  const swapConfig = buildUniswapConfig(_W("0.02"), _A("0.0005"), ADDRESSES.SwapRouter);
   const fpa = await hre.upgrades.deployProxy(
     ForwardPayoutAutomation,
-    ["The Name", "SYMB", adminAddr, oracleAddr, [Protocols.uniswap, _W("0.02"), swapDefaultParams]],
+    ["The Name", "SYMB", adminAddr, oracleAddr, swapConfig],
     {
       kind: "uups",
       constructorArgs: [poolAddr, automateAddr, ADDRESSES.WMATIC],
@@ -599,8 +591,8 @@ async function forwardPayoutAutomationFixture() {
   );
 
   await grantRole(hre, fpa.connect(admin), "GUARDIAN_ROLE", guardian);
-  await grantRole(hre, fpa.connect(admin), "SET_SWAP_CONFIG_ROLE", swapConfigSetter);
-  await grantRole(hre, fpa.connect(admin), "SET_ORACLE_ROLE", oracleSetter);
+  await grantRole(hre, fpa.connect(admin), "SET_SWAP_CONFIG_ROLE", swapConfigAdmin);
+  await grantRole(hre, fpa.connect(admin), "SET_ORACLE_ROLE", oracleAdmin);
 
   return {
     accessManager,
@@ -615,8 +607,8 @@ async function forwardPayoutAutomationFixture() {
     guardian,
     jrEtk,
     lp,
-    swapConfigSetter,
-    oracleSetter,
+    swapConfigAdmin,
+    oracleAdmin,
     marketMaker,
     oracle,
     owner,
@@ -627,8 +619,7 @@ async function forwardPayoutAutomationFixture() {
     rm,
     signers,
     srEtk,
-    swapDefaultParams,
     SwapLibrary,
-    swap,
+    deployedSwapLibrary,
   };
 }

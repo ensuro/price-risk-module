@@ -13,16 +13,11 @@ const {
   initForkCurrency,
   setupChain,
 } = require("@ensuro/core/js/test-utils");
+const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
 
 const HOUR = 3600;
 
 hre.upgrades.silenceWarnings();
-
-// enum
-const Protocols = {
-  undefined: 0,
-  uniswap: 1,
-};
 
 describe("Test AAVE payout automation contracts", function () {
   let _A;
@@ -64,24 +59,22 @@ describe("Test AAVE payout automation contracts", function () {
     });
 
     it(`Should never allow reinitialization - ${contractName}`, async () => {
-      const { pool, maticOracle, swapDefaultParams, lp, ...others } = await helpers.loadFixture(deployPoolFixture);
+      const { pool, maticOracle, lp, ...others } = await helpers.loadFixture(deployPoolFixture);
       const contractClass = others[contractName];
       const lpAddr = await ethers.resolveAddress(lp);
       const oracleAddr = await ethers.resolveAddress(maticOracle);
       const poolAddr = await ethers.resolveAddress(pool);
-      const ps = await hre.upgrades.deployProxy(
-        contractClass,
-        ["The Name", "SYMB", lpAddr, oracleAddr, [Protocols.uniswap, _W("0.02"), swapDefaultParams]],
-        {
-          kind: "uups",
-          constructorArgs: [poolAddr, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
-          unsafeAllowLinkedLibraries: true,
-        }
-      );
 
-      await expect(
-        ps.initialize("Another Name", "SYMB", lp, maticOracle, [Protocols.uniswap, _W("0.02"), swapDefaultParams])
-      ).to.be.revertedWith("Initializable: contract is already initialized");
+      const swapConfig = buildUniswapConfig(_W("0.02"), _A("0.0005"), ADDRESSES.SwapRouter);
+      const ps = await hre.upgrades.deployProxy(contractClass, ["The Name", "SYMB", lpAddr, oracleAddr, swapConfig], {
+        kind: "uups",
+        constructorArgs: [poolAddr, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
+        unsafeAllowLinkedLibraries: true,
+      });
+
+      await expect(ps.initialize("Another Name", "SYMB", lp, maticOracle, swapConfig)).to.be.revertedWith(
+        "Initializable: contract is already initialized"
+      );
     });
   });
 
@@ -343,13 +336,8 @@ describe("Test AAVE payout automation contracts", function () {
     await rm.setCDF(24, newCdf);
 
     const SwapLibrary = await ethers.getContractFactory("SwapLibrary");
-    const swap = await SwapLibrary.deploy();
-    const swapAddr = await ethers.resolveAddress(swap);
-
-    const swapDefaultParams = ethers.AbiCoder.defaultAbiCoder().encode(
-      ["uint24", "address"],
-      [_A("0.0005"), ADDRESSES.SwapRouter]
-    );
+    const deployedSwapLibrary = await SwapLibrary.deploy();
+    const swapAddr = await ethers.resolveAddress(deployedSwapLibrary);
 
     const AAVERepayPayoutAutomation = await ethers.getContractFactory("AAVERepayPayoutAutomation", {
       libraries: { SwapLibrary: swapAddr },
@@ -380,8 +368,7 @@ describe("Test AAVE payout automation contracts", function () {
       gelato,
       signers,
       SwapLibrary,
-      swap,
-      swapDefaultParams,
+      deployedSwapLibrary,
     };
   }
 
@@ -394,9 +381,10 @@ describe("Test AAVE payout automation contracts", function () {
     const lpAddr = await ethers.resolveAddress(ret.lp);
     const oracleAddr = await ethers.resolveAddress(ret.maticOracle);
 
+    const swapConfig = buildUniswapConfig(_W("0.02"), _A("0.0005"), ADDRESSES.SwapRouter);
     const ps = await hre.upgrades.deployProxy(
       ret.AAVERepayPayoutAutomation,
-      ["The Name", "SYMB", lpAddr, oracleAddr, [Protocols.uniswap, _W("0.02"), ret.swapDefaultParams]],
+      ["The Name", "SYMB", lpAddr, oracleAddr, swapConfig],
       {
         kind: "uups",
         constructorArgs: [poolAddr, automateAddr, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
@@ -420,9 +408,10 @@ describe("Test AAVE payout automation contracts", function () {
     const lpAddr = await ethers.resolveAddress(ret.lp);
     const maticOracleAddr = await ethers.resolveAddress(ret.maticOracle);
 
+    const swapConfig = buildUniswapConfig(_W("0.02"), _A("0.0005"), ADDRESSES.SwapRouter);
     const ps = await hre.upgrades.deployProxy(
       ret.AAVEBuyEthPayoutAutomation,
-      ["The Name", "SYMB", lpAddr, maticOracleAddr, [Protocols.uniswap, _W("0.02"), ret.swapDefaultParams]],
+      ["The Name", "SYMB", lpAddr, maticOracleAddr, swapConfig],
       {
         kind: "uups",
         constructorArgs: [poolAddr, automateAddr, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
