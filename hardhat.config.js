@@ -1,3 +1,5 @@
+require("dotenv").config();
+
 require("@nomicfoundation/hardhat-toolbox");
 require("@openzeppelin/hardhat-upgrades");
 require("hardhat-dependency-compiler");
@@ -20,6 +22,17 @@ module.exports = {
     alphaSort: true,
     runOnCompile: false,
     disambiguatePaths: false,
+  },
+  networks: {
+    hardhat: {
+      chains: {
+        137: {
+          hardforkHistory: {
+            london: 54659737,
+          },
+        },
+      },
+    },
   },
   dependencyCompiler: {
     paths: [

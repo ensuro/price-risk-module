@@ -2,7 +2,6 @@
 pragma solidity ^0.8.0;
 
 import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
-import {AddressUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/AddressUpgradeable.sol";
 import {ERC721EnumerableUpgradeable} from "@openzeppelin/contracts-upgradeable/token/ERC721/extensions/ERC721EnumerableUpgradeable.sol";
 import {IERC165Upgradeable} from "@openzeppelin/contracts-upgradeable/interfaces/IERC165Upgradeable.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -10,7 +9,6 @@ import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC2
 import {IERC721} from "@openzeppelin/contracts/token/ERC721/IERC721.sol";
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
-import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
 
@@ -43,19 +41,13 @@ abstract contract PayoutAutomationBase is
   IPolicyPool internal immutable _policyPool;
 
   modifier onlyPolicyPool() {
-    require(
-      _msgSender() == address(_policyPool),
-      "PayoutAutomationBase: The caller must be the PolicyPool"
-    );
+    require(_msgSender() == address(_policyPool), "PayoutAutomationBase: The caller must be the PolicyPool");
     _;
   }
 
   /// @custom:oz-upgrades-unsafe-allow constructor
   constructor(IPolicyPool policyPool_) {
-    require(
-      address(policyPool_) != address(0),
-      "PayoutAutomationBase: policyPool_ cannot be the zero address"
-    );
+    require(address(policyPool_) != address(0), "PayoutAutomationBase: policyPool_ cannot be the zero address");
     _policyPool = policyPool_;
   }
 
@@ -86,7 +78,9 @@ abstract contract PayoutAutomationBase is
   // solhint-disable-next-line no-empty-blocks
   function _authorizeUpgrade(address) internal override onlyRole(GUARDIAN_ROLE) {}
 
-  function supportsInterface(bytes4 interfaceId)
+  function supportsInterface(
+    bytes4 interfaceId
+  )
     public
     view
     virtual
@@ -137,10 +131,7 @@ abstract contract PayoutAutomationBase is
   }
 
   function recoverPolicy(uint256 policyId) external {
-    require(
-      ownerOf(policyId) == _msgSender(),
-      "PayoutAutomationBase: you must own the NFT to recover the policy"
-    );
+    require(ownerOf(policyId) == _msgSender(), "PayoutAutomationBase: you must own the NFT to recover the policy");
     // The following check is not needed since the contract logic should take care this always happens
     // require(_policyPool.ownerOf(policyId) == address(this));
     _burn(policyId);
