@@ -13,6 +13,7 @@ const {
   initForkCurrency,
   setupChain,
 } = require("@ensuro/core/js/test-utils");
+const { buildUniswapConfig } = require("@ensuro/swaplibrary/js/utils");
 
 const HOUR = 3600;
 
@@ -63,18 +64,17 @@ describe("Test AAVE payout automation contracts", function () {
       const lpAddr = await ethers.resolveAddress(lp);
       const oracleAddr = await ethers.resolveAddress(maticOracle);
       const poolAddr = await ethers.resolveAddress(pool);
-      const ps = await hre.upgrades.deployProxy(
-        contractClass,
-        ["The Name", "SYMB", lpAddr, oracleAddr, ADDRESSES.SwapRouter, _A("0.0005")],
-        {
-          kind: "uups",
-          constructorArgs: [poolAddr, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
-        }
-      );
 
-      await expect(
-        ps.initialize("Another Name", "SYMB", lp, maticOracle, ADDRESSES.SwapRouter, _A("0.0005"))
-      ).to.be.revertedWith("Initializable: contract is already initialized");
+      const swapConfig = buildUniswapConfig(_W("0.02"), _A("0.0005"), ADDRESSES.SwapRouter);
+      const ps = await hre.upgrades.deployProxy(contractClass, ["The Name", "SYMB", lpAddr, oracleAddr, swapConfig], {
+        kind: "uups",
+        constructorArgs: [poolAddr, ADDRESSES.AUTOMATE, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
+        unsafeAllowLinkedLibraries: true,
+      });
+
+      await expect(ps.initialize("Another Name", "SYMB", lp, maticOracle, swapConfig)).to.be.revertedWith(
+        "Initializable: contract is already initialized"
+      );
     });
   });
 
@@ -292,7 +292,8 @@ describe("Test AAVE payout automation contracts", function () {
     // Transfer some wmatic to the customers
     const wmatic = await ethers.getContractAt("IWETH9", ADDRESSES.WMATIC);
 
-    await helpers.setBalance(wmaticWhale.address, _E("1000000"));
+    const wmaticWhaleAddr = await ethers.resolveAddress(wmaticWhale);
+    await helpers.setBalance(wmaticWhaleAddr, _E("1000000"));
     await wmatic.connect(wmaticWhale).deposit({ value: _E("900000") });
     await wmatic.connect(wmaticWhale).transfer(cust, _E("10000"));
     await wmatic.connect(wmaticWhale).transfer(cust2, _E("10000"));
@@ -334,8 +335,16 @@ describe("Test AAVE payout automation contracts", function () {
     const newCdf = Array(Number(await rm.PRICE_SLOTS())).fill([_W("0.01"), _W("0.05"), _W("1.0")]);
     await rm.setCDF(24, newCdf);
 
-    const AAVERepayPayoutAutomation = await ethers.getContractFactory("AAVERepayPayoutAutomation");
-    const AAVEBuyEthPayoutAutomation = await ethers.getContractFactory("AAVEBuyEthPayoutAutomation");
+    const SwapLibrary = await ethers.getContractFactory("SwapLibrary");
+    const deployedSwapLibrary = await SwapLibrary.deploy();
+    const swapAddr = await ethers.resolveAddress(deployedSwapLibrary);
+
+    const AAVERepayPayoutAutomation = await ethers.getContractFactory("AAVERepayPayoutAutomation", {
+      libraries: { SwapLibrary: swapAddr },
+    });
+    const AAVEBuyEthPayoutAutomation = await ethers.getContractFactory("AAVEBuyEthPayoutAutomation", {
+      libraries: { SwapLibrary: swapAddr },
+    });
 
     return {
       pool,
@@ -358,6 +367,8 @@ describe("Test AAVE payout automation contracts", function () {
       cust2,
       gelato,
       signers,
+      SwapLibrary,
+      deployedSwapLibrary,
     };
   }
 
@@ -370,12 +381,14 @@ describe("Test AAVE payout automation contracts", function () {
     const lpAddr = await ethers.resolveAddress(ret.lp);
     const oracleAddr = await ethers.resolveAddress(ret.maticOracle);
 
+    const swapConfig = buildUniswapConfig(_W("0.02"), _A("0.0005"), ADDRESSES.SwapRouter);
     const ps = await hre.upgrades.deployProxy(
       ret.AAVERepayPayoutAutomation,
-      ["The Name", "SYMB", lpAddr, oracleAddr, ADDRESSES.SwapRouter, _A("0.0005")],
+      ["The Name", "SYMB", lpAddr, oracleAddr, swapConfig],
       {
         kind: "uups",
         constructorArgs: [poolAddr, automateAddr, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
+        unsafeAllowLinkedLibraries: true,
       }
     );
 
@@ -395,12 +408,14 @@ describe("Test AAVE payout automation contracts", function () {
     const lpAddr = await ethers.resolveAddress(ret.lp);
     const maticOracleAddr = await ethers.resolveAddress(ret.maticOracle);
 
+    const swapConfig = buildUniswapConfig(_W("0.02"), _A("0.0005"), ADDRESSES.SwapRouter);
     const ps = await hre.upgrades.deployProxy(
       ret.AAVEBuyEthPayoutAutomation,
-      ["The Name", "SYMB", lpAddr, maticOracleAddr, ADDRESSES.SwapRouter, _A("0.0005")],
+      ["The Name", "SYMB", lpAddr, maticOracleAddr, swapConfig],
       {
         kind: "uups",
         constructorArgs: [poolAddr, automateAddr, ADDRESSES.WMATIC, ADDRESSES.aaveV3],
+        unsafeAllowLinkedLibraries: true,
       }
     );
     const aWMATIC = await ethers.getContractAt("IERC20Metadata", ADDRESSES.aWMATIC);

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
+import {SwapLibrary} from "@ensuro/swaplibrary/contracts/SwapLibrary.sol";
 import {PayoutAutomationBaseGelato} from "./PayoutAutomationBaseGelato.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
@@ -9,9 +10,10 @@ import {IWETH9} from "../dependencies/uniswap-v3/IWETH9.sol";
 import {IPool} from "../dependencies/aave-v3/IPool.sol";
 import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
 import {DataTypes} from "../dependencies/aave-v3/DataTypes.sol";
-import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 
 contract AAVERepayPayoutAutomation is PayoutAutomationBaseGelato {
+  using SwapLibrary for SwapLibrary.SwapConfig;
+
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IPool internal immutable _aave;
 
@@ -36,10 +38,9 @@ contract AAVERepayPayoutAutomation is PayoutAutomationBaseGelato {
     string memory symbol_,
     address admin,
     IPriceOracle oracle_,
-    ISwapRouter swapRouter_,
-    uint24 feeTier_
+    SwapLibrary.SwapConfig calldata swapConfig_
   ) public virtual initializer {
-    __PayoutAutomationBaseGelato_init(name_, symbol_, admin, oracle_, swapRouter_, feeTier_);
+    __PayoutAutomationBaseGelato_init(name_, symbol_, admin, oracle_, swapConfig_);
     // Infinite approval to AAVE to avoid approving every time
     _policyPool.currency().approve(address(_aave), type(uint256).max);
   }

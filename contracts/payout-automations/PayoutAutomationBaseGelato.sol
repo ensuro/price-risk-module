@@ -5,11 +5,10 @@ import {IPolicyPool} from "@ensuro/core/contracts/interfaces/IPolicyPool.sol";
 import {IPolicyHolder} from "@ensuro/core/contracts/interfaces/IPolicyHolder.sol";
 import {WadRayMath} from "@ensuro/core/contracts/dependencies/WadRayMath.sol";
 
+import {SwapLibrary} from "@ensuro/swaplibrary/contracts/SwapLibrary.sol";
 import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
-
-import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 
 import {AutomateTaskCreator} from "../dependencies/gelato-v2/AutomateTaskCreator.sol";
 import {Module, ModuleData} from "../dependencies/gelato-v2/Types.sol";
@@ -21,6 +20,7 @@ import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
 import {PayoutAutomationBase} from "./PayoutAutomationBase.sol";
 
 abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutomationBase {
+  using SwapLibrary for SwapLibrary.SwapConfig;
   using SafeERC20 for IERC20Metadata;
   using WadRayMath for uint256;
   using SafeCast for uint256;
@@ -32,12 +32,7 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
   IWETH9 internal immutable weth;
 
-  struct SwapParams {
-    ISwapRouter swapRouter;
-    uint24 feeTier;
-  }
-
-  SwapParams internal _swapParams;
+  SwapLibrary.SwapConfig internal _swapConfig;
 
   /**
    * @dev Oracle for the price of gas tokens in the currency of the policy pool
@@ -45,19 +40,12 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
   IPriceOracle internal _oracle;
 
   /**
-   * @dev Tolerance, in percentage Wad, for price slippage when swapping currency for gas tokens
-   */
-  uint256 internal _priceTolerance;
-
-  /**
    * @dev Mapping from policyId to taskIds
    */
   mapping(uint256 => bytes32) private _taskIds;
 
   event OracleSet(IPriceOracle oracle);
-  event SwapRouterSet(ISwapRouter swapRouter);
-  event FeeTierSet(uint24 feeTier);
-  event PriceToleranceSet(uint256 priceTolerance);
+  event SwapConfigSet(SwapLibrary.SwapConfig swapConfig);
 
   /**
    * @param policyPool_ Address of the policy pool
@@ -81,34 +69,24 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     string memory symbol_,
     address admin,
     IPriceOracle oracle_,
-    ISwapRouter swapRouter_,
-    uint24 feeTier_
+    SwapLibrary.SwapConfig calldata swapConfig_
   ) internal onlyInitializing {
     __PayoutAutomationBase_init(name_, symbol_, admin);
-    __PayoutAutomationBaseGelato_init_unchained(oracle_, swapRouter_, feeTier_);
+    __PayoutAutomationBaseGelato_init_unchained(oracle_, swapConfig_);
   }
 
   // solhint-disable-next-line func-name-mixedcase
   function __PayoutAutomationBaseGelato_init_unchained(
     IPriceOracle oracle_,
-    ISwapRouter swapRouter_,
-    uint24 feeTier_
+    SwapLibrary.SwapConfig calldata swapConfig_
   ) internal onlyInitializing {
     require(address(oracle_) != address(0), "PayoutAutomationBaseGelato: oracle address cannot be zero");
     _oracle = oracle_;
     emit OracleSet(oracle_);
 
-    require(address(swapRouter_) != address(0), "PayoutAutomationBaseGelato: SwapRouter address cannot be zero");
-    _swapParams.swapRouter = swapRouter_;
-    _policyPool.currency().safeApprove(address(_swapParams.swapRouter), type(uint256).max);
-    emit SwapRouterSet(swapRouter_);
-
-    require(feeTier_ > 0, "PayoutAutomationBaseGelato: feeTier cannot be zero");
-    _swapParams.feeTier = feeTier_;
-    emit FeeTierSet(feeTier_);
-
-    _priceTolerance = 2e16; // 2%
-    emit PriceToleranceSet(_priceTolerance);
+    swapConfig_.validate();
+    _swapConfig = swapConfig_;
+    emit SwapConfigSet(swapConfig_);
   }
 
   /**
@@ -150,25 +128,18 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     (uint256 fee, address feeToken) = _getFeeDetails();
     require(feeToken == ETH, "Unsupported feeToken for gelato payment");
 
-    uint256 feeInUSDC = (fee.wadMul(_oracle.getCurrentPrice()) / _wadToCurrencyFactor).wadMul(WAD + _priceTolerance);
+    uint256 feeInUSDC = (fee.wadMul(_oracle.getCurrentPrice()) / _wadToCurrencyFactor).wadMul(
+      WAD + _swapConfig.maxSlippage
+    );
 
     require(feeInUSDC < amount, "ForwardPayoutAutomationGelato: the payout is not enough to cover the tx fees");
 
-    ISwapRouter.ExactOutputSingleParams memory params = ISwapRouter.ExactOutputSingleParams({
-      tokenIn: address(_policyPool.currency()),
-      tokenOut: address(weth),
-      fee: _swapParams.feeTier,
-      recipient: address(this),
-      deadline: block.timestamp,
-      amountOut: fee,
-      amountInMaximum: feeInUSDC,
-      sqrtPriceLimitX96: 0 // Since we're limiting the transfer amount, we don't need to worry about the price impact of the transaction
-    });
-
-    uint256 actualFeeInUSDC = _swapParams.swapRouter.exactOutputSingle(params);
-
-    // Sanity check
-    require(actualFeeInUSDC <= feeInUSDC, "ForwardPayoutAutomationGelato: exchange rate higher than tolerable");
+    uint256 actualFeeInUSDC = _swapConfig.exactOutput(
+      address(_policyPool.currency()),
+      address(weth),
+      fee,
+      _oracle.getCurrentPrice()
+    );
 
     // Convert the WMATIC to MATIC for fee payment
     weth.withdraw(fee);
@@ -220,46 +191,21 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
     return _oracle;
   }
 
-  function setOracle(IPriceOracle oracle_) external onlyRole(GUARDIAN_ROLE) {
+  function setOracle(IPriceOracle oracle_) external onlyRole(SET_ORACLE_ROLE) {
     require(address(oracle_) != address(0), "PayoutAutomationBaseGelato: oracle address cannot be zero");
     _oracle = oracle_;
 
     emit OracleSet(oracle_);
   }
 
-  function swapRouter() external view returns (ISwapRouter) {
-    return _swapParams.swapRouter;
+  function setSwapConfig(SwapLibrary.SwapConfig calldata swapConfig_) external onlyRole(SET_SWAP_CONFIG_ROLE) {
+    swapConfig_.validate();
+    _swapConfig = swapConfig_;
+    emit SwapConfigSet(swapConfig_);
   }
 
-  function setSwapRouter(ISwapRouter swapRouter_) external onlyRole(GUARDIAN_ROLE) {
-    require(address(swapRouter_) != address(0), "PayoutAutomationBaseGelato: SwapRouter address cannot be zero");
-    address oldRouter = address(_swapParams.swapRouter);
-    _swapParams.swapRouter = swapRouter_;
-
-    _policyPool.currency().safeApprove(oldRouter, 0);
-    _policyPool.currency().safeApprove(address(swapRouter_), type(uint256).max);
-
-    emit SwapRouterSet(swapRouter_);
-  }
-
-  function feeTier() external view returns (uint24) {
-    return _swapParams.feeTier;
-  }
-
-  function setFeeTier(uint24 feeTier_) external onlyRole(GUARDIAN_ROLE) {
-    require(feeTier_ > 0, "PayoutAutomationBaseGelato: feeTier cannot be zero");
-    _swapParams.feeTier = feeTier_;
-    emit FeeTierSet(feeTier_);
-  }
-
-  function priceTolerance() external view returns (uint256) {
-    return _priceTolerance;
-  }
-
-  function setPriceTolerance(uint256 priceTolerance_) external onlyRole(GUARDIAN_ROLE) {
-    require(priceTolerance_ > 0, "PayoutAutomationBaseGelato: priceTolerance cannot be zero");
-    _priceTolerance = priceTolerance_;
-    emit PriceToleranceSet(priceTolerance_);
+  function swapConfig() external view returns (SwapLibrary.SwapConfig memory) {
+    return _swapConfig;
   }
 
   // Need to receive gas tokens when unwrapping.
@@ -270,5 +216,5 @@ abstract contract PayoutAutomationBaseGelato is AutomateTaskCreator, PayoutAutom
    * variables without shifting down storage in the inheritance chain.
    * See https://docs.openzeppelin.com/contracts/4.x/upgradeable#storage_gaps
    */
-  uint256[46] private __gap;
+  uint256[45] private __gap;
 }

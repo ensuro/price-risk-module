@@ -11,3 +11,7 @@ artifacts
 
 .openzeppelin
 .DS_Store
+
+contracts/.DS_Store
+
+.DS_Store

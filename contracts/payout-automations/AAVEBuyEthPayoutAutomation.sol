@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: Apache-2.0
 pragma solidity ^0.8.0;
 
+import {SwapLibrary} from "@ensuro/swaplibrary/contracts/SwapLibrary.sol";
 import {PayoutAutomationBaseGelato} from "./PayoutAutomationBaseGelato.sol";
 import {WadRayMath} from "@ensuro/core/contracts/dependencies/WadRayMath.sol";
 import {IPolicyPool} from "@ensuro/core/contracts/interfaces/IPolicyPool.sol";
 import {IWETH9} from "../dependencies/uniswap-v3/IWETH9.sol";
 import {IPool} from "../dependencies/aave-v3/IPool.sol";
 import {IPriceOracle} from "../interfaces/IPriceOracle.sol";
-import {ISwapRouter} from "@uniswap/v3-periphery/contracts/interfaces/ISwapRouter.sol";
 
 contract AAVEBuyEthPayoutAutomation is PayoutAutomationBaseGelato {
+  using SwapLibrary for SwapLibrary.SwapConfig;
   using WadRayMath for uint256;
 
   /// @custom:oz-upgrades-unsafe-allow state-variable-immutable
@@ -32,10 +33,9 @@ contract AAVEBuyEthPayoutAutomation is PayoutAutomationBaseGelato {
     string memory symbol_,
     address admin,
     IPriceOracle oracle_,
-    ISwapRouter swapRouter_,
-    uint24 feeTier_
+    SwapLibrary.SwapConfig calldata swapConfig_
   ) public virtual initializer {
-    __PayoutAutomationBaseGelato_init(name_, symbol_, admin, oracle_, swapRouter_, feeTier_);
+    __PayoutAutomationBaseGelato_init(name_, symbol_, admin, oracle_, swapConfig_);
     // Infinite approval to AAVE to avoid approving every time
     weth.approve(address(_aave), type(uint256).max);
   }
@@ -59,24 +59,16 @@ contract AAVEBuyEthPayoutAutomation is PayoutAutomationBaseGelato {
     (uint256 fee, address feeToken) = _getFeeDetails();
     require(feeToken == ETH, "Unsupported feeToken for gelato payment");
 
-    uint256 ethMin = (amount * _wadToCurrencyFactor).wadDiv(_oracle.getCurrentPrice()).wadMul(WAD - _priceTolerance);
-
-    ISwapRouter.ExactInputSingleParams memory params = ISwapRouter.ExactInputSingleParams({
-      tokenIn: address(_policyPool.currency()),
-      tokenOut: address(weth),
-      fee: _swapParams.feeTier,
-      recipient: address(this),
-      deadline: block.timestamp,
-      amountIn: amount,
-      amountOutMinimum: ethMin,
-      sqrtPriceLimitX96: 0 // Since we're limiting the transfer amount, we don't need to worry about the price impact of the transaction
-    });
-
-    uint256 receivedEth = _swapParams.swapRouter.exactInputSingle(params);
+    uint256 receivedEth = _swapConfig.exactInput(
+      address(_policyPool.currency()),
+      address(weth),
+      amount,
+      _oracle.getCurrentPrice()
+    );
 
     // Sanity check
     require(
-      (receivedEth >= ethMin) && (receivedEth >= fee),
+      receivedEth >= fee,
       "AAVEBuyEthPayoutAutomation: the payout is not enough to cover the tx fees"
     );
 
