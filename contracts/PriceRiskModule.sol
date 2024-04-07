@@ -317,7 +317,7 @@ contract PriceRiskModule is RiskModule, IPriceRiskModule {
     Params memory p = params();
     p.jrCollRatio = uint256(pricing.jrCollRatio);
     p.collRatio = uint256(pricing.collRatio);
-    return _getMinimumPremium(payout, pricing.lossProb, expiration, p);
+    return _getMinimumPremium(payout, pricing.lossProb, expiration, uint40(block.timestamp), p);
   }
 
   function getPolicyData(uint256 policyId) external view returns (PolicyData memory) {
